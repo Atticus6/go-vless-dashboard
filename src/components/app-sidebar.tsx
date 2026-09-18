@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Server, Settings } from 'lucide-react'
+import { Server, Settings, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { UserButton } from '@/components/auth/user/user-button'
 import {
@@ -14,6 +14,7 @@ import {
 
 const menuKeys = [
   { to: '/dashboard/nodes', label: 'menu.nodes', icon: Server },
+  { to: '/dashboard/node-users', label: 'menu.nodeUsers', icon: Users },
   {
     to: '/dashboard/settings/$path',
     params: { path: 'account' },

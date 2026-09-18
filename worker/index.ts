@@ -38,6 +38,10 @@ const app = new Hono<{ Bindings: Env }>()
       req: c.req.raw,
       router: appRouter,
       createContext: ({ req }) => createTRPCContext({ req, env: c.env }),
+      onError: (e) => {
+        console.error(e.error);
+
+      }
     }),
   )
 

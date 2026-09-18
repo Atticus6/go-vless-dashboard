@@ -1,16 +1,15 @@
 import { TRPCError } from '@trpc/server'
-import { and, eq, isNotNull, or } from 'drizzle-orm'
-import { node, nodeInvitation, nodeMember, type NodeRow } from '!/db/app-schema'
+import { and, eq } from 'drizzle-orm'
+import { node, nodeUser, type NodeRow } from '!/db/app-schema'
 import type { Database } from '!/db/index'
-import { user as authUser } from '!/db/schema'
 import { generateId } from '!/lib/utils'
 import {
   backendStatusSchema,
   createNodeSchema,
-  invitationIdInputSchema,
-  inviteMemberInputSchema,
-  memberRemoveInputSchema,
   nodeIdInputSchema,
+  nodeUserCreateInputSchema,
+  nodeUserEnsureInputSchema,
+  nodeUserRemoveInputSchema,
   updateNodeInputSchema,
   usersInputSchema,
 } from '!/lib/validators'
@@ -106,20 +105,6 @@ async function getOwnedNode(db: Database, id: string, userId: string) {
   return target
 }
 
-// 共享读：owner 或成员可见（读到之后能干什么是各 procedure 的事：
-// query 共享，mutation 一律只要 owner，成员只读）。
-async function getAccessibleNode(db: Database, id: string, userId: string) {
-  const target = await getNode(db, id)
-  if (!target) return null
-  if (target.userId === userId) return target
-  const m = await db
-    .select({ userId: nodeMember.userId })
-    .from(nodeMember)
-    .where(and(eq(nodeMember.nodeId, id), eq(nodeMember.userId, userId)))
-    .limit(1)
-  return m.length > 0 ? target : null
-}
-
 function notFound(): never {
   throw new TRPCError({ code: 'NOT_FOUND', message: 'node not found' })
 }
@@ -186,16 +171,9 @@ export const nodesRouter = router({
         backendVersion: node.backendVersion,
         reportedUrls: node.reportedUrls,
         reportedTunnelUrl: node.reportedTunnelUrl,
-        ownerId: node.userId,
-        memberUserId: nodeMember.userId,
       })
       .from(node)
-      .leftJoin(
-        nodeMember,
-        and(eq(nodeMember.nodeId, node.id), eq(nodeMember.userId, uid)),
-      )
-      // 自己名下或被共享的节点可见.
-      .where(or(eq(node.userId, uid), isNotNull(nodeMember.userId)))
+      .where(eq(node.userId, uid))
     return {
       nodes: rows.map((row) => ({
         id: row.id,
@@ -208,7 +186,6 @@ export const nodesRouter = router({
         reportedUrls: parseReportedUrls(row.reportedUrls),
         reportedTunnelUrl: row.reportedTunnelUrl,
         online: isOnline(row.lastSeenAt),
-        isOwner: row.ownerId === uid,
       })),
     }
   }),
@@ -328,7 +305,7 @@ export const nodesRouter = router({
   }),
 
   status: authedProcedure.input(nodeIdInputSchema).query(async ({ ctx, input }) => {
-    const target = await getAccessibleNode(ctx.db, input.id, ctx.session.user.id)
+    const target = await getOwnedNode(ctx.db, input.id, ctx.session.user.id)
     if (!target) notFound()
     if (!target.baseUrl || !target.configKey) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'node not configured' })
@@ -356,177 +333,87 @@ export const nodesRouter = router({
     return proxyUsers('remove', target, input.uuids)
   }),
 
-  // 共享成员管理（owner 专属）：成员只读，读写/删节点/密钥/成员管理一律只要 owner。
-  memberList: authedProcedure.input(nodeIdInputSchema).query(async ({ ctx, input }) => {
-    const db = ctx.db
-    const existing = await getOwnedNode(db, input.id, ctx.session.user.id)
-    if (!existing) notFound()
-    const rows = await db
-      .select({ userId: authUser.id, email: authUser.email, name: authUser.name })
-      .from(nodeMember)
-      .innerJoin(authUser, eq(nodeMember.userId, authUser.id))
-      .where(eq(nodeMember.nodeId, input.id))
-    return { members: rows }
-  }),
-
-  inviteMember: authedProcedure.input(inviteMemberInputSchema).mutation(async ({ ctx, input }) => {
-    const db = ctx.db
-    const me = ctx.session.user.id
-    const existing = await getOwnedNode(db, input.id, me)
-    if (!existing) notFound()
-    // 不论邮箱是否注册、是否已邀请，一律返回成功（防枚举）。
-    if (input.email === ctx.session.user.email.toLowerCase()) {
-      return { ok: true as const }
-    }
-    const inv = await db
-      .select({ id: nodeInvitation.id, status: nodeInvitation.status })
-      .from(nodeInvitation)
-      .where(
-        and(
-          eq(nodeInvitation.nodeId, input.id),
-          eq(nodeInvitation.email, input.email),
-        ),
-      )
-      .limit(1)
-    const row = inv[0]
-    if (!row) {
-      await db.insert(nodeInvitation).values({
-        id: generateId(),
-        nodeId: input.id,
-        email: input.email,
-        invitedBy: me,
-        status: 'pending',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-    } else if (row.status !== 'pending') {
-      await db
-        .update(nodeInvitation)
-        .set({ status: 'pending', invitedBy: me, updatedAt: new Date() })
-        .where(eq(nodeInvitation.id, row.id))
-    }
-    return { ok: true as const }
-  }),
-
-  memberRemove: authedProcedure.input(memberRemoveInputSchema).mutation(async ({ ctx, input }) => {
-    const db = ctx.db
-    const existing = await getOwnedNode(db, input.id, ctx.session.user.id)
-    if (!existing) notFound()
-    if (input.userId === existing.userId) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'cannot remove owner' })
-    }
-    const rows = await db
-      .select({ userId: nodeMember.userId })
-      .from(nodeMember)
-      .where(and(eq(nodeMember.nodeId, input.id), eq(nodeMember.userId, input.userId)))
-      .limit(1)
-    if (rows.length === 0) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'member not found' })
-    }
-    await db
-      .delete(nodeMember)
-      .where(and(eq(nodeMember.nodeId, input.id), eq(nodeMember.userId, input.userId)))
-    return { ok: true as const }
-  }),
-
-  // 成员主动离开：只删自己的成员行；owner 不能离开自己的节点（去删节点）。
-  leave: authedProcedure.input(nodeIdInputSchema).mutation(async ({ ctx, input }) => {
-    const db = ctx.db
-    const me = ctx.session.user.id
-    const target = await getNode(db, input.id)
-    if (!target) notFound()
-    if (target.userId === me) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'owner cannot leave' })
-    }
-    const rows = await db
-      .select({ userId: nodeMember.userId })
-      .from(nodeMember)
-      .where(and(eq(nodeMember.nodeId, input.id), eq(nodeMember.userId, me)))
-      .limit(1)
-    if (rows.length === 0) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'not a member' })
-    }
-    await db
-      .delete(nodeMember)
-      .where(and(eq(nodeMember.nodeId, input.id), eq(nodeMember.userId, me)))
-    return { ok: true as const }
-  }),
-
-  // 我的待处理邀请（仅看自己的；节点/邀请人没了连带消失）.
-  myInvitations: authedProcedure.query(async ({ ctx }) => {
-    const email = ctx.session.user.email.toLowerCase()
+  // 节点订阅用户（归属当前用户）：创建时服务端签发 UUID token，
+  // 先落后端再记账；复制订阅链接前用 ensure 同步到目标节点。
+  nodeUserList: authedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select({
-        id: nodeInvitation.id,
-        nodeId: nodeInvitation.nodeId,
-        nodeName: node.name,
-        inviterEmail: authUser.email,
-        createdAt: nodeInvitation.createdAt,
+        id: nodeUser.id,
+        name: nodeUser.name,
+        token: nodeUser.token,
+        createdAt: nodeUser.createdAt,
       })
-      .from(nodeInvitation)
-      .innerJoin(node, eq(nodeInvitation.nodeId, node.id))
-      .innerJoin(authUser, eq(nodeInvitation.invitedBy, authUser.id))
-      .where(
-        and(
-          eq(nodeInvitation.email, email),
-          eq(nodeInvitation.status, 'pending'),
-        ),
-      )
+      .from(nodeUser)
+      .where(eq(nodeUser.userId, ctx.session.user.id))
     return {
-      invitations: rows.map((row) => ({
+      users: rows.map((row) => ({
         ...row,
         createdAt: toISO(row.createdAt),
       })),
     }
   }),
 
-  // 应答邀请：只能应答发给自己的 pending 邀请；接受即进成员表（幂等）.
-  invitationAccept: authedProcedure.input(invitationIdInputSchema).mutation(async ({ ctx, input }) => {
-    const db = ctx.db
-    const me = ctx.session.user.id
-    const myEmail = ctx.session.user.email.toLowerCase()
-    const rows = await db
-      .select()
-      .from(nodeInvitation)
-      .where(eq(nodeInvitation.id, input.invitationId))
-      .limit(1)
-    const inv = rows[0]
-    if (!inv || inv.status !== 'pending' || inv.email !== myEmail) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'invitation not found' })
-    }
-    const dup = await db
-      .select({ userId: nodeMember.userId })
-      .from(nodeMember)
-      .where(and(eq(nodeMember.nodeId, inv.nodeId), eq(nodeMember.userId, me)))
-      .limit(1)
-    if (dup.length === 0) {
-      await db
-        .insert(nodeMember)
-        .values({ nodeId: inv.nodeId, userId: me, createdAt: new Date() })
-    }
-    await db
-      .update(nodeInvitation)
-      .set({ status: 'accepted', updatedAt: new Date() })
-      .where(eq(nodeInvitation.id, inv.id))
-    return { ok: true as const }
-  }),
+  nodeUserCreate: authedProcedure
+    .input(nodeUserCreateInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const row = {
+        id: generateId(),
+        userId: ctx.session.user.id,
+        name: input.name,
+        token: crypto.randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      await ctx.db.insert(nodeUser).values(row)
+      return {
+        user: {
+          id: row.id,
+          name: row.name,
+          token: row.token,
+          createdAt: toISO(row.createdAt),
+        },
+      }
+    }),
 
-  invitationDecline: authedProcedure.input(invitationIdInputSchema).mutation(async ({ ctx, input }) => {
-    const db = ctx.db
-    const myEmail = ctx.session.user.email.toLowerCase()
-    const rows = await db
-      .select()
-      .from(nodeInvitation)
-      .where(eq(nodeInvitation.id, input.invitationId))
-      .limit(1)
-    const inv = rows[0]
-    if (!inv || inv.status !== 'pending' || inv.email !== myEmail) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'invitation not found' })
-    }
-    await db
-      .update(nodeInvitation)
-      .set({ status: 'declined', updatedAt: new Date() })
-      .where(eq(nodeInvitation.id, inv.id))
-    return { ok: true as const }
-  }),
+  nodeUserRemove: authedProcedure
+    .input(nodeUserRemoveInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const rows = await db
+        .select({ id: nodeUser.id })
+        .from(nodeUser)
+        .where(
+          and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
+        )
+        .limit(1)
+      if (rows.length === 0) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
+      }
+      await db.delete(nodeUser).where(eq(nodeUser.id, input.nodeUserId))
+      return { ok: true as const }
+    }),
+
+  // 复制订阅链接前调用：把该 token 同步到目标节点后端（后端 add 幂等）。
+  nodeUserEnsure: authedProcedure
+    .input(nodeUserEnsureInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const target = await getOwnedNode(db, input.id, me)
+      if (!target) notFound()
+      const rows = await db
+        .select({ token: nodeUser.token })
+        .from(nodeUser)
+        .where(
+          and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
+        )
+        .limit(1)
+      const record = rows[0]
+      if (!record) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
+      }
+      await proxyUsers('add', target, [record.token])
+      return { ok: true as const }
+    }),
 })

@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
   integer,
-  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -39,40 +38,18 @@ export const node = sqliteTable('node', {
 
 export type NodeRow = typeof node.$inferSelect
 
-// 节点共享成员（只读）：owner 手动添加其他用户，成员仅查看节点。
-// 任一侧删除连带清理本表（节点删→成员关系没；用户删号→其成员关系没，名下节点走 node 侧 cascade）。
-export const nodeMember = sqliteTable(
-  'node_member',
+// 节点订阅用户（归属 dashboard 用户，不绑特定节点，可用于名下任一节点）：
+// 每条带一个 UUID token；复制订阅链接时自动同步到目标节点后端。
+// 创建者删号连带清理。
+export const nodeUser = sqliteTable(
+  'node_user',
   {
-    nodeId: text('node_id')
-      .notNull()
-      .references(() => node.id, { onDelete: 'cascade' }),
+    id: text('id').primaryKey(),
     userId: text('user_id')
       .notNull()
       .references(() => authUser.id, { onDelete: 'cascade' }),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-      .notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.nodeId, t.userId] })],
-)
-
-export type NodeMemberRow = typeof nodeMember.$inferSelect
-
-// 节点邀请（按邮箱）：存在与否统一返回成功（防枚举）；被邀人接受后才进成员表。
-// 节点删除连带清理；邀请人删号连带清理其发出的邀请.
-export const nodeInvitation = sqliteTable(
-  'node_invitation',
-  {
-    id: text('id').primaryKey(),
-    nodeId: text('node_id')
-      .notNull()
-      .references(() => node.id, { onDelete: 'cascade' }),
-    email: text('email').notNull(),
-    invitedBy: text('invited_by')
-      .notNull()
-      .references(() => authUser.id, { onDelete: 'cascade' }),
-    status: text('status').notNull().default('pending'),
+    name: text('name').notNull(),
+    token: text('token').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -82,8 +59,8 @@ export const nodeInvitation = sqliteTable(
       .notNull(),
   },
   (t) => [
-    uniqueIndex('node_invitation_node_email_unique').on(t.nodeId, t.email),
+    uniqueIndex('node_user_user_token_unique').on(t.userId, t.token),
   ],
 )
 
-export type NodeInvitationRow = typeof nodeInvitation.$inferSelect
+export type NodeUserRow = typeof nodeUser.$inferSelect

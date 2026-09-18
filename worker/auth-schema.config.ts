@@ -20,15 +20,9 @@ export const auth = betterAuth({
     enabled: true,
   },
   // 与 worker/auth.ts 保持同步（见上注）。
-  // 注意：required 保持 false（原因见 worker/auth.ts）；重新 generate 后
-  // 若把 token 变回 nullable，需手动改回 .notNull() 以对齐 D1 约束。
   user: {
-    additionalFields: {
-      token: {
-        type: 'string',
-        required: false,
-        input: false,
-      },
+    deleteUser: {
+      enabled: true,
     },
   },
 })

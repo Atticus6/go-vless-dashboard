@@ -3,13 +3,11 @@ import {
   Activity,
   ChevronDown,
   Copy,
-  LogOut,
   Pencil,
   QrCode,
   Server,
   Terminal,
   Trash2,
-  Users,
   X,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
@@ -17,7 +15,6 @@ import { createPortal } from 'react-dom'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useSession } from '@better-auth-ui/react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   AlertDialog,
@@ -77,12 +74,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { NodeItem } from '@/lib/nodes'
-import { authClient } from '@/lib/auth-client'
 import { trpc } from '@/lib/trpc'
 import {
   buildVlessLink,
   hostnameOf,
-  isValidUuid,
   type VlessNetwork,
   type VlessSecurity,
 } from '@/lib/vless'
@@ -95,9 +90,7 @@ type NodeDialogKind =
   | 'install'
   | 'copyVless'
   | 'edit'
-  | 'members'
   | 'delete'
-  | 'leave'
 
 export const Route = createFileRoute('/dashboard/nodes')({
   component: NodesPage,
@@ -211,75 +204,49 @@ function NodesPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {item.isOwner ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button variant="outline" size="sm">
-                                {t('nodes.actions')}
-                                <ChevronDown />
-                              </Button>
-                            }
-                          />
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => open('test', item)}
-                            >
-                              <Activity className="text-muted-foreground" />
-                              {t('nodes.connectivity')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => open('install', item)}
-                            >
-                              <Terminal className="text-muted-foreground" />
-                              {t('nodes.installCommands')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => open('copyVless', item)}
-                            >
-                              <Copy className="text-muted-foreground" />
-                              {t('nodes.copySubscription')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => open('edit', item)}
-                            >
-                              <Pencil className="text-muted-foreground" />
-                              {t('nodes.edit')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => open('members', item)}
-                            >
-                              <Users className="text-muted-foreground" />
-                              {t('nodes.members')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => open('delete', item)}
-                            >
-                              <Trash2 />
-                              {t('nodes.delete')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <div className="flex items-center justify-end gap-1">
-                          <Badge
-                            variant="outline"
-                            className="text-muted-foreground"
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="outline" size="sm">
+                              {t('nodes.actions')}
+                              <ChevronDown />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => open('test', item)}
                           >
-                            {t('nodes.readOnly')}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => open('leave', item)}
+                            <Activity className="text-muted-foreground" />
+                            {t('nodes.connectivity')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => open('install', item)}
                           >
-                            <LogOut />
-                            {t('nodes.leave')}
-                          </Button>
-                        </div>
-                      )}
+                            <Terminal className="text-muted-foreground" />
+                            {t('nodes.installCommands')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => open('copyVless', item)}
+                          >
+                            <Copy className="text-muted-foreground" />
+                            {t('nodes.copySubscription')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => open('edit', item)}
+                          >
+                            <Pencil className="text-muted-foreground" />
+                            {t('nodes.edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => open('delete', item)}
+                          >
+                            <Trash2 />
+                            {t('nodes.delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -315,17 +282,9 @@ function NodesPage() {
         item={active?.kind === 'edit' ? active.item : null}
         onClose={() => close('edit')}
       />
-      <MembersDialog
-        item={active?.kind === 'members' ? active.item : null}
-        onClose={() => close('members')}
-      />
       <DeleteDialog
         item={active?.kind === 'delete' ? active.item : null}
         onClose={() => close('delete')}
-      />
-      <LeaveDialog
-        item={active?.kind === 'leave' ? active.item : null}
-        onClose={() => close('leave')}
       />
     </section>
   )
@@ -584,10 +543,19 @@ function CopyVlessDialog({
 
 function CopyVlessBody({ item }: { item: NodeItem }) {
   const { t } = useTranslation()
-  // UUID 即当前登录用户的个人 token（注册时服务端签发）。
-  const { data: session } = useSession(authClient)
-  const token =
-    (session?.user as { token?: string } | undefined)?.token ?? ''
+  // UUID 取当前用户的节点用户（token 即订阅链接的 uuid）。
+  const listQuery = trpc.nodes.nodeUserList.useQuery()
+  const nodeUsers = listQuery.data?.users ?? []
+  const [nodeUserId, setNodeUserId] = useState('')
+  const selected = nodeUsers.find((u) => u.id === nodeUserId) ?? null
+  const token = selected?.token ?? ''
+
+  // 单用户时自动选中。
+  useEffect(() => {
+    if (!nodeUserId && nodeUsers.length === 1 && nodeUsers[0]) {
+      setNodeUserId(nodeUsers[0].id)
+    }
+  }, [nodeUserId, nodeUsers])
   const hosts = useMemo(() => {
     const out: string[] = []
     for (const raw of [...item.reportedUrls, item.reportedTunnelUrl ?? '']) {
@@ -611,21 +579,42 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
         ? [manualAddress.trim()]
         : []
 
-  const uuidValid = isValidUuid(token)
-
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="vless-uuid">{t('nodes.subUuid')}</Label>
-        <Input
-          id="vless-uuid"
-          value={token}
-          readOnly
-          placeholder={t('nodes.subUuid')}
-          className="font-mono text-xs"
-        />
-        {token && !uuidValid && (
-          <p className="text-xs text-destructive">{t('nodes.subUuidInvalid')}</p>
+        <Label htmlFor="vless-user">{t('nodes.subUuid')}</Label>
+        {listQuery.isPending ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="size-3.5" />
+            {t('overview.loading')}
+          </p>
+        ) : nodeUsers.length > 0 ? (
+          <>
+            <Select
+              value={nodeUserId}
+              onValueChange={(value) => setNodeUserId(value ?? '')}
+            >
+              <SelectTrigger id="vless-user" className="w-full">
+                <SelectValue placeholder={t('nodes.subUuid')} />
+              </SelectTrigger>
+              <SelectContent>
+                {nodeUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selected && (
+              <p className="font-mono text-xs break-all text-muted-foreground">
+                {selected.token}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t('nodes.subNoUsers')}
+          </p>
         )}
       </div>
 
@@ -641,7 +630,7 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
         </div>
       )}
 
-      {uuidValid && effectiveHosts.length > 0 ? (
+      {selected && effectiveHosts.length > 0 ? (
         <Accordion defaultValue={[effectiveHosts[0] ?? '']}>
           {effectiveHosts.map((host, index) => (
             <AccordionItem key={host} value={host}>
@@ -650,6 +639,8 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
               </AccordionTrigger>
               <AccordionContent>
                 <VlessDetail
+                  nodeId={item.id}
+                  nodeUserId={selected.id}
                   host={host}
                   token={token}
                   defaultRemark={
@@ -678,11 +669,15 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
 }
 
 function VlessDetail({
+  nodeId,
+  nodeUserId,
   host,
   token,
   defaultRemark,
   onShowQr,
 }: {
+  nodeId: string
+  nodeUserId: string
   host: string
   token: string
   defaultRemark: string
@@ -698,6 +693,8 @@ function VlessDetail({
   const [fp, setFp] = useState('chrome')
   const [sni, setSni] = useState('')
   const [remark, setRemark] = useState(defaultRemark)
+
+  const ensure = trpc.nodes.nodeUserEnsure.useMutation()
 
   // HOST / SNI 为空时跟随本地址。
   const resolvedHost = hostHeader.trim() || host
@@ -721,8 +718,20 @@ function VlessDetail({
   async function handleCopy() {
     if (!link) return
     try {
+      // 先把 token 同步到该节点后端（幂等），再复制。
+      await ensure.mutateAsync({ id: nodeId, nodeUserId })
       await navigator.clipboard.writeText(link)
       toast.success(t('nodes.subLinkCopied'))
+    } catch {
+      toast.error(t('nodes.installCmdCopyFailed'))
+    }
+  }
+
+  async function handleShowQr() {
+    if (!link) return
+    try {
+      await ensure.mutateAsync({ id: nodeId, nodeUserId })
+      onShowQr(link)
     } catch {
       toast.error(t('nodes.installCmdCopyFailed'))
     }
@@ -853,18 +862,19 @@ function VlessDetail({
       <div className="flex gap-2">
         <Button
           size="sm"
-          disabled={!ready}
+          disabled={!ready || ensure.isPending}
           onClick={() => void handleCopy()}
           className="flex-1"
         >
+          {(ensure.isPending) && <Spinner className="size-3.5" />}
           <Copy />
           {t('nodes.subCopyLink')}
         </Button>
         <Button
           size="sm"
           variant="outline"
-          disabled={!ready}
-          onClick={() => onShowQr(link)}
+          disabled={!ready || ensure.isPending}
+          onClick={() => void handleShowQr()}
           className="flex-1"
         >
           <QrCode />
@@ -1045,133 +1055,6 @@ function EditForm({
   )
 }
 
-function MembersDialog({
-  item,
-  onClose,
-}: {
-  item: NodeItem | null
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <Dialog
-      open={item !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('nodes.members')}</DialogTitle>
-          <DialogDescription>
-            {t('nodes.membersDesc', { name: item?.name ?? '' })}
-          </DialogDescription>
-        </DialogHeader>
-        {item && <MemberBody key={item.id} nodeId={item.id} />}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function MemberBody({ nodeId }: { nodeId: string }) {
-  const { t } = useTranslation()
-  const utils = trpc.useUtils()
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState('')
-  const membersQuery = trpc.nodes.memberList.useQuery({ id: nodeId })
-  const invalidateMembers = () => void utils.nodes.invalidate()
-  const inviteMember = trpc.nodes.inviteMember.useMutation({
-    onSuccess: () => {
-      setEmail('')
-      setError('')
-      invalidateMembers()
-    },
-  })
-  const removeMember = trpc.nodes.memberRemove.useMutation({
-    onSuccess: () => invalidateMembers(),
-  })
-  const members = membersQuery.data?.members ?? []
-
-  async function handleInvite(event: FormEvent) {
-    event.preventDefault()
-    if (email.trim() === '') return
-    setError('')
-    try {
-      await inviteMember.mutateAsync({ id: nodeId, email: email.trim() })
-      setEmail('')
-      toast.success(t('nodes.inviteSent'))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed')
-    }
-  }
-
-  async function handleRemove(userId: string) {
-    try {
-      await removeMember.mutateAsync({ id: nodeId, userId })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed')
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {membersQuery.isPending ? (
-        <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
-      ) : members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('nodes.memberEmpty')}</p>
-      ) : (
-        <ul className="space-y-1">
-          {members.map((m) => (
-            <li
-              key={m.userId}
-              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-mono text-xs">{m.email}</p>
-                {m.name && (
-                  <p className="truncate text-xs text-muted-foreground">
-                    {m.name}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title={t('nodes.delete')}
-                aria-label={t('nodes.delete')}
-                className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                disabled={removeMember.isPending}
-                onClick={() => void handleRemove(m.userId)}
-              >
-                <Trash2 />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <form className="flex gap-2" onSubmit={handleInvite}>
-        <Input
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder={t('nodes.memberEmailPlaceholder')}
-          type="email"
-          required
-          maxLength={256}
-          className="flex-1"
-        />
-        <Button
-          type="submit"
-          disabled={inviteMember.isPending || email.trim() === ''}
-        >
-          {t('nodes.inviteSend')}
-        </Button>
-      </form>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-    </div>
-  )
-}
-
 function DeleteDialog({
   item,
   onClose,
@@ -1225,55 +1108,3 @@ function DeleteDialog({
   )
 }
 
-function LeaveDialog({
-  item,
-  onClose,
-}: {
-  item: NodeItem | null
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  const utils = trpc.useUtils()
-  const leaveNode = trpc.nodes.leave.useMutation({
-    onSuccess: () => void utils.nodes.invalidate(),
-  })
-
-  async function handleLeave() {
-    if (!item) return
-    try {
-      await leaveNode.mutateAsync({ id: item.id })
-      toast.success(t('nodes.left'))
-      onClose()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'failed')
-    }
-  }
-
-  return (
-    <AlertDialog
-      open={item !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('nodes.confirmLeaveTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('nodes.confirmLeaveDesc', { name: item?.name ?? '' })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t('nodes.cancel')}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              void handleLeave()
-            }}
-          >
-            {t('nodes.leave')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}

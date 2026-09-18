@@ -14,6 +14,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as DashboardRouteRouteImport } from './routes/dashboard/route'
 import { Route as AuthPathRouteImport } from './routes/auth/$path'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as DashboardNodeUsersRouteImport } from './routes/dashboard/node-users'
 import { Route as DashboardNodesRouteImport } from './routes/dashboard/nodes'
 import { Route as DashboardSettingsPathRouteImport } from './routes/dashboard/settings/$path'
 
@@ -42,6 +43,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardRouteRoute,
 } as any)
+const DashboardNodeUsersRoute = DashboardNodeUsersRouteImport.update({
+  id: '/node-users',
+  path: '/node-users',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
 const DashboardNodesRoute = DashboardNodesRouteImport.update({
   id: '/nodes',
   path: '/nodes',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRouteRouteWithChildren
   '/about': typeof AboutRoute
   '/auth/$path': typeof AuthPathRoute
+  '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/auth/$path': typeof AuthPathRoute
+  '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRouteRouteWithChildren
   '/about': typeof AboutRoute
   '/auth/$path': typeof AuthPathRoute
+  '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/about'
     | '/auth/$path'
+    | '/dashboard/node-users'
     | '/dashboard/nodes'
     | '/dashboard/'
     | '/dashboard/settings/$path'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/auth/$path'
+    | '/dashboard/node-users'
     | '/dashboard/nodes'
     | '/dashboard'
     | '/dashboard/settings/$path'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/about'
     | '/auth/$path'
+    | '/dashboard/node-users'
     | '/dashboard/nodes'
     | '/dashboard/'
     | '/dashboard/settings/$path'
@@ -153,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof DashboardRouteRoute
     }
+    '/dashboard/node-users': {
+      id: '/dashboard/node-users'
+      path: '/node-users'
+      fullPath: '/dashboard/node-users'
+      preLoaderRoute: typeof DashboardNodeUsersRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
     '/dashboard/nodes': {
       id: '/dashboard/nodes'
       path: '/nodes'
@@ -171,12 +190,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardRouteRouteChildren {
+  DashboardNodeUsersRoute: typeof DashboardNodeUsersRoute
   DashboardNodesRoute: typeof DashboardNodesRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DashboardSettingsPathRoute: typeof DashboardSettingsPathRoute
 }
 
 const DashboardRouteRouteChildren: DashboardRouteRouteChildren = {
+  DashboardNodeUsersRoute: DashboardNodeUsersRoute,
   DashboardNodesRoute: DashboardNodesRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DashboardSettingsPathRoute: DashboardSettingsPathRoute,

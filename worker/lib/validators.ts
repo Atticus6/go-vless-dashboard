@@ -73,19 +73,19 @@ export const usersInputSchema = z.object({
   uuids: uuidListSchema,
 })
 
-// 节点共享成员：按邮箱邀请，按 userId 移除，按邀请 id 应答.
-export const inviteMemberInputSchema = z.object({
-  id: nodeIdSchema,
-  email: z.email({ error: 'invalid email' }).trim().toLowerCase().max(256),
+// 节点订阅用户：按名称创建，token 服务端签发；按行 id 删除；
+// 复制订阅链接前按（节点 id + 行 id）同步到目标后端。
+export const nodeUserCreateInputSchema = z.object({
+  name: nodeNameSchema,
 })
 
-export const memberRemoveInputSchema = z.object({
-  id: nodeIdSchema,
-  userId: nodeIdSchema,
+export const nodeUserRemoveInputSchema = z.object({
+  nodeUserId: nodeIdSchema,
 })
 
-export const invitationIdInputSchema = z.object({
-  invitationId: nodeIdSchema,
+export const nodeUserEnsureInputSchema = z.object({
+  id: nodeIdSchema,
+  nodeUserId: nodeIdSchema,
 })
 
 // Go 后端 /config 返回体的输出契约：worker 用它运行时校验，后端改字段会直接 500 而不是透出 undefined。

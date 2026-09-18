@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { node } from '!/db/app-schema'
 import { createDb } from '!/db/index'
-import { user as authUser } from '!/db/schema'
 import { registerBodySchema } from '!/lib/validators'
 import { zValidator } from '!/lib/zod-validator'
 
@@ -69,17 +68,10 @@ const registerApp = new Hono<{ Bindings: Env }>().post(
       patch.baseUrl = candidates[0]
     }
     await db.update(node).set(patch).where(eq(node.id, id))
-    // 下发所属用户的个人 token，供后端验用户身份（数组留扩展位）。
-    const owners = await db
-      .select({ token: authUser.token })
-      .from(authUser)
-      .where(eq(authUser.id, target.userId))
-      .limit(1)
-    const ownerToken = owners[0]?.token
     return c.json({
       ok: true,
       heartbeatIntervalSec: HEARTBEAT_INTERVAL_SEC,
-      userTokens: ownerToken ? [ownerToken] : [],
+      userTokens: [],
     })
   },
 )
