@@ -37,6 +37,26 @@ import type { RouterOutputs } from '@/lib/trpc'
 
 type NodeUserItem = RouterOutputs['nodes']['nodeUserList']['users'][number]
 
+type PushSync = { synced: string[]; failed: string[] }
+
+// 推送结果拼到 toast 后面：全部成功 / 部分失败 / 暂无节点（下次注册自动同步）.
+function formatSync(
+  sync: PushSync | undefined,
+  t: (key: string, opts?: Record<string, string | number>) => string,
+): string {
+  if (!sync || (sync.synced.length === 0 && sync.failed.length === 0)) {
+    return `，${t('nodes.nodeUserNoNodes')}`
+  }
+  if (sync.failed.length === 0) {
+    return `，${t('nodes.nodeUserPushed', { count: sync.synced.length })}`
+  }
+  return `，${t('nodes.nodeUserPushPartial', {
+    synced: sync.synced.length,
+    failed: sync.failed.length,
+    names: sync.failed.join('、'),
+  })}`
+}
+
 export const Route = createFileRoute('/dashboard/node-users')({
   component: NodeUsersPage,
 })
@@ -66,9 +86,11 @@ function NodeUsersPage() {
     event.preventDefault()
     if (name.trim() === '') return
     try {
-      await createUser.mutateAsync({ name: name.trim() })
+      const res = await createUser.mutateAsync({ name: name.trim() })
       setName('')
-      toast.success(t('nodes.nodeUserAdded'))
+      toast.success(
+        `${t('nodes.nodeUserAdded')}${formatSync(res.sync, t)}`,
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'failed')
     }
@@ -86,8 +108,10 @@ function NodeUsersPage() {
   async function handleDelete() {
     if (!deleteTarget) return
     try {
-      await removeUser.mutateAsync({ nodeUserId: deleteTarget.id })
-      toast.success(t('nodes.nodeUserRemoved'))
+      const res = await removeUser.mutateAsync({ nodeUserId: deleteTarget.id })
+      toast.success(
+        `${t('nodes.nodeUserRemoved')}${formatSync(res.sync, t)}`,
+      )
       setDeleteTarget(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'failed')

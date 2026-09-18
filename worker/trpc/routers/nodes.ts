@@ -157,6 +157,58 @@ async function proxyUsers(
   return check.body as { ok: true; users: string[] }
 }
 
+// 增删节点用户时广播推送到名下已配置节点（尽力而为）：
+// 在线节点即刻生效；离线/推送失败的节点下次反向注册拉取时自动对账.
+// 永不抛错，调用方落库成功后调用，失败只进 failed 名单.
+interface PushSummary {
+  synced: string[]
+  failed: string[]
+}
+
+async function broadcastUserToken(
+  db: Database,
+  userId: string,
+  action: 'add' | 'remove',
+  token: string,
+): Promise<PushSummary> {
+  const owned = await db
+    .select({
+      name: node.name,
+      baseUrl: node.baseUrl,
+      configKey: node.configKey,
+    })
+    .from(node)
+    .where(eq(node.userId, userId))
+  const targets = owned.filter(
+    (n): n is typeof n & { baseUrl: string; configKey: string } =>
+      !!n.baseUrl && !!n.configKey,
+  )
+  if (targets.length === 0) return { synced: [], failed: [] }
+  const results = await Promise.allSettled(
+    targets.map(async (t) => {
+      const check = await fetchBackend(
+        t.baseUrl,
+        t.configKey,
+        `/config/users/${action}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ uuids: [token] }),
+        },
+      )
+      if (!check.ok) throw new Error(backendMessage(check.body, 'request failed'))
+      return t.name
+    }),
+  )
+  const synced: string[] = []
+  const failed: string[] = []
+  results.forEach((r, i) => {
+    const name = targets[i]?.name ?? ''
+    if (r.status === 'fulfilled') synced.push(name)
+    else failed.push(name)
+  })
+  return { synced, failed }
+}
+
 export const nodesRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
     const uid = ctx.session.user.id
@@ -334,7 +386,7 @@ export const nodesRouter = router({
   }),
 
   // 节点订阅用户（归属当前用户）：创建时服务端签发 UUID token，
-  // 先落后端再记账；复制订阅链接前用 ensure 同步到目标节点。
+  // 落库后广播推送到名下已配置节点；离线节点下次注册拉取时自动补齐.
   nodeUserList: authedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select({
@@ -365,6 +417,12 @@ export const nodesRouter = router({
         updatedAt: new Date(),
       }
       await ctx.db.insert(nodeUser).values(row)
+      const sync = await broadcastUserToken(
+        ctx.db,
+        ctx.session.user.id,
+        'add',
+        row.token,
+      )
       return {
         user: {
           id: row.id,
@@ -372,6 +430,7 @@ export const nodesRouter = router({
           token: row.token,
           createdAt: toISO(row.createdAt),
         },
+        sync,
       }
     }),
 
@@ -381,17 +440,20 @@ export const nodesRouter = router({
       const db = ctx.db
       const me = ctx.session.user.id
       const rows = await db
-        .select({ id: nodeUser.id })
+        .select({ id: nodeUser.id, token: nodeUser.token })
         .from(nodeUser)
         .where(
           and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
         )
         .limit(1)
-      if (rows.length === 0) {
+      const record = rows[0]
+      if (!record) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
       }
+      // 先广播移除（在线即刻失效），再落库删除；离线节点下次注册对账时移除.
+      const sync = await broadcastUserToken(db, me, 'remove', record.token)
       await db.delete(nodeUser).where(eq(nodeUser.id, input.nodeUserId))
-      return { ok: true as const }
+      return { ok: true as const, sync }
     }),
 
   // 复制订阅链接前调用：把该 token 同步到目标节点后端（后端 add 幂等）。

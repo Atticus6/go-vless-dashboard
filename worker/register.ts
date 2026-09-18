@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { node } from '!/db/app-schema'
+import { node, nodeUser } from '!/db/app-schema'
 import { createDb } from '!/db/index'
 import { registerBodySchema } from '!/lib/validators'
 import { zValidator } from '!/lib/zod-validator'
 
-// 后端反向注册的心跳周期（秒）；在线判定窗口 = 2 个周期.
-export const HEARTBEAT_INTERVAL_SEC = 300
+// 后端反向注册的心跳周期（秒）：节点每 30 分钟全量同步一次 UUID；
+// 在线判定窗口 = 2 个周期（60 分钟内无上报即离线）.
+export const HEARTBEAT_INTERVAL_SEC = 1800
 export const ONLINE_WINDOW_MS = HEARTBEAT_INTERVAL_SEC * 2 * 1000
 
 export function isOnline(
@@ -68,10 +69,15 @@ const registerApp = new Hono<{ Bindings: Env }>().post(
       patch.baseUrl = candidates[0]
     }
     await db.update(node).set(patch).where(eq(node.id, id))
+    // 所属用户的节点用户 token：后端注册成功后拉取为 VLESS uuid（无用户时为空数组）.
+    const userRows = await db
+      .select({ token: nodeUser.token })
+      .from(nodeUser)
+      .where(eq(nodeUser.userId, target.userId))
     return c.json({
       ok: true,
       heartbeatIntervalSec: HEARTBEAT_INTERVAL_SEC,
-      userTokens: [],
+      userTokens: userRows.map((r) => r.token),
     })
   },
 )
