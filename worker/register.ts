@@ -1,0 +1,87 @@
+import { Hono } from 'hono'
+import { eq } from 'drizzle-orm'
+import { node } from '!/db/app-schema'
+import { createDb } from '!/db/index'
+import { user as authUser } from '!/db/schema'
+import { registerBodySchema } from '!/lib/validators'
+import { zValidator } from '!/lib/zod-validator'
+
+// 后端反向注册的心跳周期（秒）；在线判定窗口 = 2 个周期.
+export const HEARTBEAT_INTERVAL_SEC = 300
+export const ONLINE_WINDOW_MS = HEARTBEAT_INTERVAL_SEC * 2 * 1000
+
+export function isOnline(
+  lastSeenAt: Date | string | number | null | undefined,
+): boolean {
+  if (!lastSeenAt) return false
+  const t =
+    lastSeenAt instanceof Date
+      ? lastSeenAt.getTime()
+      : new Date(lastSeenAt).getTime()
+  return Number.isFinite(t) && Date.now() - t < ONLINE_WINDOW_MS
+}
+
+// 定长比较，key 长度不同直接失败（不泄露长度之外的信息）.
+function safeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const ab = enc.encode(a)
+  const bb = enc.encode(b)
+  if (ab.byteLength !== bb.byteLength) return false
+  let diff = 0
+  for (let i = 0; i < ab.byteLength; i++) {
+    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0)
+  }
+  return diff === 0
+}
+
+// go-vless 后端反向注册：公开接口，凭节点 id + configKey 鉴权.
+// 不走 tRPC：Go 端实现 devalue 编解码成本过高，普通 JSON 即可.
+const registerApp = new Hono<{ Bindings: Env }>().post(
+  '/register',
+  zValidator('json', registerBodySchema),
+  async (c) => {
+    const { id, key, version, urls, tunnelUrl } = c.req.valid('json')
+    const db = createDb(c.env.DB)
+    const rows = await db.select().from(node).where(eq(node.id, id)).limit(1)
+    const target = rows[0]
+    if (!target || !target.configKey || !safeEqual(key, target.configKey)) {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
+    // 上报地址按优先级：urls 依次，其次隧道地址（最不可靠，垫底）。
+    const reportedUrls = urls ?? []
+    const reportedTunnel = tunnelUrl?.trim() ? tunnelUrl.trim() : null
+    const candidates = [...reportedUrls]
+    if (reportedTunnel) candidates.push(reportedTunnel)
+    // 上报原值每次落库；baseUrl 仅在未配置时自动填入，手动填过永不覆盖。
+    const patch: {
+      lastSeenAt: Date
+      backendVersion: string | null
+      reportedUrls: string
+      reportedTunnelUrl: string | null
+      baseUrl?: string | null
+    } = {
+      lastSeenAt: new Date(),
+      backendVersion: version ?? target.backendVersion,
+      reportedUrls: JSON.stringify(reportedUrls),
+      reportedTunnelUrl: reportedTunnel,
+    }
+    if (!target.baseUrl && candidates.length > 0 && candidates[0]) {
+      patch.baseUrl = candidates[0]
+    }
+    await db.update(node).set(patch).where(eq(node.id, id))
+    // 下发所属用户的个人 token，供后端验用户身份（数组留扩展位）。
+    const owners = await db
+      .select({ token: authUser.token })
+      .from(authUser)
+      .where(eq(authUser.id, target.userId))
+      .limit(1)
+    const ownerToken = owners[0]?.token
+    return c.json({
+      ok: true,
+      heartbeatIntervalSec: HEARTBEAT_INTERVAL_SEC,
+      userTokens: ownerToken ? [ownerToken] : [],
+    })
+  },
+)
+
+export default registerApp

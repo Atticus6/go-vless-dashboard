@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Cloudflare Workers
+.wrangler
+.dev.vars*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +26,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.tanstack/tmp/13e90bb0-894bf8313995c80b2cea62a225f16d1b
+.env

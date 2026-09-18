@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "go-vless-dashboard",
+  // Set this to today's date
+  "compatibility_date": "2026-09-18",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "./worker/index.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "go-vless-dashboard",
+      "database_id": "1ed9f4a3-e394-4cf1-88ad-20ac1a18da6e",
+      "migrations_dir": "d1/migrations"
+    }
+  ],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  }
+}

@@ -1,14 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 export const Route = createFileRoute('/about')({
   component: AboutComponent,
 })
 
 function AboutComponent() {
+  const { t } = useTranslation()
+
   return (
     <section>
-      <h2>关于</h2>
-      <p>这是一个示例二级路由，可删除或改成 dashboard 页面。</p>
+      <h2>{t('about.title')}</h2>
+      <p>{t('about.body')}</p>
     </section>
   )
 }

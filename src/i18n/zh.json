@@ -1,0 +1,132 @@
+{
+  "app": {
+    "title": "go-vless-dashboard",
+    "subtitle": "TanStack Router（file-based）+ shadcn（Base UI）+ Cloudflare Worker（Hono /api）已就绪。"
+  },
+  "lang": {
+    "label": "切换语言"
+  },
+  "theme": {
+    "appearance": "外观",
+    "theme": "主题",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "multiSession": {
+    "switchAccount": "切换账号",
+    "addAccount": "添加账号",
+    "manageAccounts": "管理账号",
+    "manageAccountsDescription": "管理你的多账号安全访问。"
+  },
+  "deleteUser": {
+    "deleteAccount": "注销账号",
+    "deleteAccountDescription": "永久删除你的账号及所有关联数据，此操作不可撤销。",
+    "deleteUserVerificationSent": "请查收邮件以确认注销账号。",
+    "deleteUserSuccess": "你的账号已注销。"
+  },
+  "badges": {
+    "baseUI": "Base UI",
+    "theme": "DESIGN.md 主题",
+    "apiOk": "Worker API 正常",
+    "apiError": "Worker API 异常"
+  },
+  "home": {
+    "cardTitle": "Worker API 连通性",
+    "cardDesc": "首页 loader 请求同源 /api/health，由 Worker 内 Hono 响应。",
+    "apiError": "Worker API 连接失败，请确认 dev server / 部署正常。",
+    "recheck": "重新检测",
+    "goDashboard": "进入控制台"
+  },
+  "about": {
+    "title": "关于",
+    "body": "这是一个示例二级路由，可删除或改成 dashboard 页面。"
+  },
+  "menu": {
+    "nodes": "节点",
+    "settings": "设置"
+  },
+  "overview": {
+    "loading": "加载中…"
+  },
+  "nodes": {
+    "title": "节点管理",
+    "desc": "纳管多台 go-vless 服务，密钥只保存在 Worker 侧。",
+    "add": "添加节点",
+    "edit": "编辑",
+    "delete": "删除",
+    "test": "测试",
+    "testing": "测试中…",
+    "name": "名称",
+    "namePlaceholder": "比如：香港 VPS",
+    "baseUrl": "服务地址",
+    "configKey": "管理密钥",
+    "configKeyKeep": "留空表示不修改",
+    "actions": "操作",
+    "status": "连通",
+    "empty": "还没有节点",
+    "emptyDesc": "添加第一台 go-vless 服务开始管理。",
+    "notConfigured": "未配置",
+    "addTitle": "添加节点",
+    "editTitle": "编辑节点",
+    "formDesc": "保存前会实时连通后端校验地址与密钥。",
+    "formDescAdd": "只需填名称，通信密钥会自动生成；服务地址可稍后在编辑里补（后端注册成功后会自动填入）。",
+    "save": "保存",
+    "saving": "保存中…",
+    "cancel": "取消",
+    "added": "节点已添加",
+    "saved": "节点已更新",
+    "deleted": "节点已删除",
+    "confirmDeleteTitle": "删除节点？",
+    "confirmDeleteDesc": "将删除「{{name}}」的纳管记录（不影响远端服务运行）。",
+    "leave": "离开",
+    "confirmLeaveTitle": "离开该节点？",
+    "confirmLeaveDesc": "将退出「{{name}}」的共享，之后不再看到该节点。",
+    "left": "已退出共享",
+    "copyInstallCmd": "复制安装命令",
+    "installCmdCopied": "安装命令已复制，到服务器上执行即可",
+    "installCmdCopyFailed": "复制失败，请手动复制",
+    "copySubscription": "复制订阅链接",
+    "subUuid": "UUID",
+    "subHost": "地址",
+    "subPort": "端口",
+    "subSecurity": "安全",
+    "subNetwork": "传输",
+    "subPath": "路径",
+    "subRemark": "备注",
+    "subCopyLink": "复制链接",
+    "subLinkCopied": "订阅链接已复制",
+    "subQrCode": "二维码",
+    "subDetails": "查询详细配置",
+    "subIncomplete": "请先完善详细配置",
+    "subHostHeader": "HOST",
+    "subSni": "SNI",
+    "subFp": "指纹",
+    "subUuidInvalid": "UUID 格式不正确",
+    "online": "在线",
+    "offline": "离线",
+    "installAuto": "一键安装",
+    "installBinary": "二进制运行",
+    "installDocker": "Docker 运行",
+    "installDev": "本地联调（Bash）",
+    "installDevPwsh": "本地联调（PowerShell）",
+    "members": "成员管理",
+    "membersDesc": "{{name}} 的共享成员（仅查看权限）",
+    "memberEmailPlaceholder": "user@example.com",
+    "memberEmpty": "暂无共享成员",
+    "readOnly": "只读",
+    "inviteSend": "发送邀请",
+    "inviteSent": "邀请已发送",
+    "invitations": "邀请",
+    "invitationsEmpty": "暂无邀请",
+    "inviteDesc": "{{inviter}} 邀请你加入「{{node}}」",
+    "inviteJoinLabel": "邀请你加入",
+    "inviteAccept": "接受",
+    "inviteDecline": "拒绝",
+    "manage": "管理",
+    "basicInfo": "基本信息",
+    "connectivity": "连通测试",
+    "installCommands": "安装命令",
+    "dangerZone": "危险区"
+  }
+}

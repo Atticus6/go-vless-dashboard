@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789694709095,
+      "tag": "0000_tan_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789697172980,
+      "tag": "0001_sad_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789701549183,
+      "tag": "0002_volatile_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789708609504,
+      "tag": "0003_overconfident_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789711061084,
+      "tag": "0004_medical_tag",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789713423542,
+      "tag": "0005_dear_ricochet",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789715245078,
+      "tag": "0006_cloudy_sauron",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789715657722,
+      "tag": "0007_conscious_wonder_man",
+      "breakpoints": true
+    }
+  ]
+}

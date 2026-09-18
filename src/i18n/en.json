@@ -1,0 +1,132 @@
+{
+  "app": {
+    "title": "go-vless-dashboard",
+    "subtitle": "TanStack Router (file-based) + shadcn (Base UI) + Cloudflare Worker (Hono /api) is ready."
+  },
+  "lang": {
+    "label": "Switch language"
+  },
+  "theme": {
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "multiSession": {
+    "switchAccount": "Switch Account",
+    "addAccount": "Add Account",
+    "manageAccounts": "Manage accounts",
+    "manageAccountsDescription": "Manage your accounts for secure access."
+  },
+  "deleteUser": {
+    "deleteAccount": "Delete account",
+    "deleteAccountDescription": "Permanently remove your account and all associated data. This cannot be undone.",
+    "deleteUserVerificationSent": "Check your email to confirm account deletion.",
+    "deleteUserSuccess": "Your account has been deleted."
+  },
+  "badges": {
+    "baseUI": "Base UI",
+    "theme": "DESIGN.md theme",
+    "apiOk": "Worker API OK",
+    "apiError": "Worker API error"
+  },
+  "home": {
+    "cardTitle": "Worker API connectivity",
+    "cardDesc": "The home loader requests same-origin /api/health, served by Hono inside the Worker.",
+    "apiError": "Worker API connection failed. Make sure the dev server / deployment is running.",
+    "recheck": "Retry",
+    "goDashboard": "Open dashboard"
+  },
+  "about": {
+    "title": "About",
+    "body": "This is a sample second-level route. Delete it or turn it into a dashboard page."
+  },
+  "menu": {
+    "nodes": "Nodes",
+    "settings": "Settings"
+  },
+  "overview": {
+    "loading": "Loading…"
+  },
+  "nodes": {
+    "title": "Nodes",
+    "desc": "Manage go-vless servers. Keys stay on the Worker side.",
+    "add": "Add node",
+    "edit": "Edit",
+    "delete": "Delete",
+    "test": "Test",
+    "testing": "Testing…",
+    "name": "Name",
+    "namePlaceholder": "e.g. HK VPS",
+    "baseUrl": "Server URL",
+    "configKey": "Management key",
+    "configKeyKeep": "Leave empty to keep unchanged",
+    "actions": "Actions",
+    "status": "Reachable",
+    "empty": "No nodes yet",
+    "emptyDesc": "Add your first go-vless server to manage it.",
+    "notConfigured": "Not configured",
+    "addTitle": "Add node",
+    "editTitle": "Edit node",
+    "formDesc": "The backend is probed live to verify URL and key before saving.",
+    "formDescAdd": "Just a name for now. A management key is generated automatically; add the server URL in Edit (auto-filled once the backend registers), connectivity is verified once complete.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "added": "Node added",
+    "saved": "Node updated",
+    "deleted": "Node deleted",
+    "confirmDeleteTitle": "Delete node?",
+    "confirmDeleteDesc": "Removes the management record of “{{name}}” (remote server keeps running).",
+    "leave": "Leave",
+    "confirmLeaveTitle": "Leave this node?",
+    "confirmLeaveDesc": "You will leave the shared node “{{name}}” and lose access to it.",
+    "left": "Left the shared node",
+    "copyInstallCmd": "Copy install command",
+    "installCmdCopied": "Install command copied, run it on your server",
+    "installCmdCopyFailed": "Copy failed, please copy manually",
+    "copySubscription": "Copy subscription link",
+    "subUuid": "UUID",
+    "subHost": "Host",
+    "subPort": "Port",
+    "subSecurity": "Security",
+    "subNetwork": "Network",
+    "subPath": "Path",
+    "subRemark": "Remark",
+    "subCopyLink": "Copy link",
+    "subLinkCopied": "Subscription link copied",
+    "subQrCode": "QR code",
+    "subDetails": "View detailed config",
+    "subIncomplete": "Complete the detailed config first",
+    "subHostHeader": "HOST",
+    "subSni": "SNI",
+    "subFp": "Fingerprint",
+    "subUuidInvalid": "Invalid UUID format",
+    "online": "Online",
+    "offline": "Offline",
+    "installAuto": "Quick install",
+    "installBinary": "Run with binary",
+    "installDocker": "Run with Docker",
+    "installDev": "Local dev (Bash)",
+    "installDevPwsh": "Local dev (PowerShell)",
+    "members": "Members",
+    "membersDesc": "Shared members of {{name}} (view-only)",
+    "memberEmailPlaceholder": "user@example.com",
+    "memberEmpty": "No shared members yet",
+    "readOnly": "Read-only",
+    "inviteSend": "Send invite",
+    "inviteSent": "Invitation sent",
+    "invitations": "Invitations",
+    "invitationsEmpty": "No invitations",
+    "inviteDesc": "{{inviter}} invited you to \"{{node}}\"",
+    "inviteJoinLabel": "invited you to join",
+    "inviteAccept": "Accept",
+    "inviteDecline": "Decline",
+    "manage": "Manage",
+    "basicInfo": "General",
+    "connectivity": "Connectivity",
+    "installCommands": "Install commands",
+    "dangerZone": "Danger zone"
+  }
+}
