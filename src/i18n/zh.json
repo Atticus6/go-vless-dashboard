@@ -119,6 +119,19 @@
     "nodeUserDeleteTitle": "删除该用户？",
     "nodeUserDeleteDesc": "将删除「{{name}}」，其订阅链接随即失效。",
     "copyToken": "复制 Token",
-    "tokenCopied": "Token 已复制"
+    "tokenCopied": "Token 已复制",
+    "regTitle": "服务端同步",
+    "regConnected": "已连接",
+    "regFailed": "连接失败",
+    "regDisabled": "未配置注册",
+    "regPending": "等待首次同步",
+    "regDashboardUrl": "服务端地址",
+    "regNodeId": "节点 ID",
+    "regLastSync": "上次同步成功",
+    "regNever": "从未",
+    "regNextSync": "下次同步约 {{count}} 分钟",
+    "regSyncedUsers": "已同步用户 {{count}} 个",
+    "regLastChange": "上次变更 +{{added}} −{{removed}}",
+    "regLastError": "最近错误"
   }
 }

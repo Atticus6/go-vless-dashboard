@@ -88,6 +88,23 @@ export const nodeUserEnsureInputSchema = z.object({
   nodeUserId: nodeIdSchema,
 })
 
+// 节点端 /config 的 register 段：后端的 dashboard 注册/同步状态（是否连上服务端等）。
+// 全可选：老版本后端没有该段也能通过校验，前端按 undefined 处理.
+export const backendRegisterSchema = z.object({
+  enabled: z.boolean(),
+  dashboardUrl: z.string().optional(),
+  nodeId: z.string().optional(),
+  lastSuccessAt: z.string().nullable().optional(),
+  lastError: z.string().nullable().optional(),
+  lastSyncAdded: z.number().optional(),
+  lastSyncRemoved: z.number().optional(),
+  syncedUsers: z.number().optional(),
+  heartbeatIntervalSec: z.number().optional(),
+  nextSyncInSec: z.number().optional(),
+})
+
+export type BackendRegister = z.infer<typeof backendRegisterSchema>
+
 // Go 后端 /config 返回体的输出契约：worker 用它运行时校验，后端改字段会直接 500 而不是透出 undefined。
 export const backendStatusSchema = z.object({
   tunnel: z.boolean(),
@@ -109,6 +126,7 @@ export const backendStatusSchema = z.object({
     rss: z.string(),
   }),
   uptime: z.string(),
+  register: backendRegisterSchema.optional(),
 })
 
 export type BackendStatus = z.infer<typeof backendStatusSchema>

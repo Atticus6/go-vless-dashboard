@@ -119,6 +119,19 @@
     "nodeUserDeleteTitle": "Delete this user?",
     "nodeUserDeleteDesc": "“{{name}}” will be removed and its subscription links stop working.",
     "copyToken": "Copy token",
-    "tokenCopied": "Token copied"
+    "tokenCopied": "Token copied",
+    "regTitle": "Dashboard sync",
+    "regConnected": "Connected",
+    "regFailed": "Connection failed",
+    "regDisabled": "Registration not configured",
+    "regPending": "Waiting for first sync",
+    "regDashboardUrl": "Dashboard URL",
+    "regNodeId": "Node ID",
+    "regLastSync": "Last successful sync",
+    "regNever": "Never",
+    "regNextSync": "Next sync in ~{{count}} min",
+    "regSyncedUsers": "Synced users: {{count}}",
+    "regLastChange": "Last change +{{added}} −{{removed}}",
+    "regLastError": "Last error"
   }
 }

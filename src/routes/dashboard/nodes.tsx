@@ -73,7 +73,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { NodeItem } from '@/lib/nodes'
+import type { BackendStatus, NodeItem } from '@/lib/nodes'
 import { trpc } from '@/lib/trpc'
 import {
   buildVlessLink,
@@ -429,26 +429,150 @@ function TestBody({ nodeId }: { nodeId: string }) {
   }, [])
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={testing}
-        onClick={() => void run()}
-      >
-        {testing && <Spinner className="size-3.5" />}
-        {testing ? t('nodes.testing') : t('nodes.test')}
-      </Button>
-      {!testing &&
-        result &&
-        (result.ok ? (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={testing}
+          onClick={() => void run()}
+        >
+          {testing && <Spinner className="size-3.5" />}
+          {testing ? t('nodes.testing') : t('nodes.test')}
+        </Button>
+        {!testing &&
+          result &&
+          (result.ok ? (
+            <Badge variant="outline" className="gap-1.5">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              {result.text}
+            </Badge>
+          ) : (
+            <Badge variant="destructive">{result.text}</Badge>
+          ))}
+      </div>
+      <RegisterSyncInfo nodeId={nodeId} />
+    </div>
+  )
+}
+
+// 节点端 /config 的 register 段：服务端（dashboard）注册/同步状态.
+// 老版本后端没有该段时不展示.
+function RegisterSyncInfo({ nodeId }: { nodeId: string }) {
+  const { t } = useTranslation()
+  const statusQuery = trpc.nodes.status.useQuery({ id: nodeId })
+
+  if (statusQuery.isPending) {
+    return (
+      <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
+    )
+  }
+  if (statusQuery.isError) {
+    return (
+      <p className="text-sm text-destructive">
+        {statusQuery.error.message}
+      </p>
+    )
+  }
+  const reg = statusQuery.data?.register
+  if (!reg) return null
+  return <RegisterSyncDetail reg={reg} />
+}
+
+function RegisterSyncDetail({
+  reg,
+}: {
+  reg: NonNullable<BackendStatus['register']>
+}) {
+  const { t } = useTranslation()
+  const connected = reg.enabled && !reg.lastError && !!reg.lastSuccessAt
+  const failed = reg.enabled && !!reg.lastError
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{t('nodes.regTitle')}</span>
+        {!reg.enabled ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            {t('nodes.regDisabled')}
+          </Badge>
+        ) : failed ? (
+          <Badge variant="destructive">{t('nodes.regFailed')}</Badge>
+        ) : connected ? (
           <Badge variant="outline" className="gap-1.5">
             <span className="size-1.5 rounded-full bg-emerald-500" />
-            {result.text}
+            {t('nodes.regConnected')}
           </Badge>
         ) : (
-          <Badge variant="destructive">{result.text}</Badge>
-        ))}
+          <Badge variant="outline" className="text-muted-foreground">
+            {t('nodes.regPending')}
+          </Badge>
+        )}
+      </div>
+      {reg.enabled && (
+        <dl className="space-y-1 text-xs">
+          {reg.dashboardUrl && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.regDashboardUrl')}
+              </dt>
+              <dd className="min-w-0 flex-1 truncate font-mono">
+                {reg.dashboardUrl}
+              </dd>
+            </div>
+          )}
+          {reg.nodeId && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.regNodeId')}
+              </dt>
+              <dd className="min-w-0 flex-1 truncate font-mono">
+                {reg.nodeId}
+              </dd>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <dt className="shrink-0 text-muted-foreground">
+              {t('nodes.regLastSync')}
+            </dt>
+            <dd className="flex-1">
+              {reg.lastSuccessAt
+                ? new Date(reg.lastSuccessAt).toLocaleString()
+                : t('nodes.regNever')}
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 text-muted-foreground">
+              {t('nodes.regNextSync', {
+                count: Math.max(1, Math.ceil((reg.nextSyncInSec ?? 0) / 60)),
+              })}
+            </dt>
+          </div>
+          {reg.syncedUsers !== undefined && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.regSyncedUsers', { count: reg.syncedUsers })}
+              </dt>
+              <dd className="flex-1 text-muted-foreground">
+                {t('nodes.regLastChange', {
+                  added: reg.lastSyncAdded ?? 0,
+                  removed: reg.lastSyncRemoved ?? 0,
+                })}
+              </dd>
+            </div>
+          )}
+          {reg.lastError && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.regLastError')}
+              </dt>
+              <dd className="min-w-0 flex-1 break-all text-destructive">
+                {reg.lastError}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
     </div>
   )
 }
