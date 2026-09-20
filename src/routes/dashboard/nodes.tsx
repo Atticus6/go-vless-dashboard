@@ -669,6 +669,18 @@ function InstallDialog({
     }
   }
 
+  // 三元组原文（服务端地址:节点id:config_key），供 --register / REGISTER 手填。
+  async function handleCopyTriple() {
+    if (!item) return
+    try {
+      const { triple } = await installCmd.mutateAsync({ id: item.id })
+      await navigator.clipboard.writeText(triple)
+      toast.success(t('nodes.tripleCopied'))
+    } catch {
+      toast.error(t('nodes.installCmdCopyFailed'))
+    }
+  }
+
   const kinds: Array<[InstallKind, string]> = [
     ['auto', t('nodes.installAuto')],
     ['binary', t('nodes.installBinary')],
@@ -690,6 +702,18 @@ function InstallDialog({
           <DialogDescription>{item?.name ?? ''}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            className="justify-start"
+            disabled={installCmd.isPending}
+            onClick={() => void handleCopyTriple()}
+          >
+            <Copy className="text-muted-foreground" />
+            {t('nodes.tripleCopy')}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {t('nodes.tripleDesc')}
+          </p>
           {kinds.map(([kind, label]) => (
             <Button
               key={kind}
