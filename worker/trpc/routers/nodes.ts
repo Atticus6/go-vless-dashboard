@@ -304,6 +304,8 @@ export const nodesRouter = router({
     const db = ctx.db
     const existing = await getOwnedNode(db, input.id, ctx.session.user.id)
     if (!existing) notFound()
+    // 关联行显式清理（D1 外键级联不一定生效，用户保留、变回全部语义）.
+    await db.delete(nodeUserNode).where(eq(nodeUserNode.nodeId, input.id))
     await db.delete(node).where(eq(node.id, input.id))
     return { ok: true as const }
   }),
@@ -525,6 +527,8 @@ export const nodesRouter = router({
         record.token,
         links.map((l) => l.nodeId),
       )
+      // 关联行显式清理（D1 外键级联不一定生效）.
+      await db.delete(nodeUserNode).where(eq(nodeUserNode.nodeUserId, record.id))
       await db.delete(nodeUser).where(eq(nodeUser.id, input.nodeUserId))
       return { ok: true as const, sync }
     }),

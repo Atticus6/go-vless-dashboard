@@ -45,10 +45,31 @@
   "menu": {
     "nodes": "节点",
     "nodeUsers": "节点用户",
+    "notify": "通知",
+    "config": "配置",
     "settings": "设置"
   },
   "overview": {
     "loading": "加载中…"
+  },
+  "notify": {
+    "desc": "一次只用一个通知渠道，保存即切换（旧的不再保留）。",
+    "saved": "通知配置已保存",
+    "noChannel": "没有启用的通知渠道，先选一个再测试",
+    "testOk": "测试通知已发出（{{channels}}）",
+    "testPartial": "部分渠道失败：{{failed}}",
+    "testSend": "发送测试",
+    "channel": "通知方式",
+    "channelOff": "关闭",
+    "feishuTitle": "飞书群机器人",
+    "feishuDesc": "群聊添加自定义机器人，复制 Webhook 地址填入；签了密钥就再填密钥。",
+    "telegramTitle": "Telegram Bot",
+    "telegramDesc": "和 @BotFather 拿 bot token，再把 chat id（个人/群/频道）填入。",
+    "webhook": "Webhook 地址",
+    "secret": "签名密钥（可空）",
+    "secretPlaceholder": "只在机器人开启签名时填",
+    "botToken": "Bot Token",
+    "chatId": "Chat ID"
   },
   "nodes": {
     "title": "节点管理",

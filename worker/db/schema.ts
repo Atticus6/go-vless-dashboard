@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import type { Config } from "!/lib/notify";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -9,6 +10,9 @@ export const user = sqliteTable("user", {
     .default(false)
     .notNull(),
   image: text("image"),
+  // 用户配置对象：notifyConfig 是其中一项，后续配置项往该对象加 key；
+  // mode json 自动序列化/反序列化，$type 保证类型安全；缺省 {}.
+  config: text("config", { mode: "json" }).$type<Config>().default({}),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .notNull(),

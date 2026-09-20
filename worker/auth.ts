@@ -1,8 +1,8 @@
 import { betterAuth } from 'better-auth/minimal'
 import { multiSession } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
-import { eq } from 'drizzle-orm'
-import { node, nodeUser } from '!/db/app-schema'
+import { eq, inArray } from 'drizzle-orm'
+import { node, nodeUser, nodeUserNode } from '!/db/app-schema'
 import type { Database } from '!/db/index'
 import { generateId } from '!/lib/utils'
 
@@ -38,9 +38,29 @@ export function createAuth(env: Env, db: Database) {
       deleteUser: {
         enabled: true,
         // D1 外键级联不一定生效，这里显式清理应用侧残留：
-        // 名下节点、节点订阅用户（幂等，级联已清则匹配 0 行）。
+        // 名下节点、节点订阅用户及其双向关联行（幂等，级联已清则匹配 0 行）。
         afterDelete: async (user) => {
           const userId = user.id
+          const ownedUsers = await db
+            .select({ id: nodeUser.id })
+            .from(nodeUser)
+            .where(eq(nodeUser.userId, userId))
+          const userIds = ownedUsers.map((u) => u.id)
+          if (userIds.length > 0) {
+            await db
+              .delete(nodeUserNode)
+              .where(inArray(nodeUserNode.nodeUserId, userIds))
+          }
+          const ownedNodes = await db
+            .select({ id: node.id })
+            .from(node)
+            .where(eq(node.userId, userId))
+          const nodeIds = ownedNodes.map((n) => n.id)
+          if (nodeIds.length > 0) {
+            await db
+              .delete(nodeUserNode)
+              .where(inArray(nodeUserNode.nodeId, nodeIds))
+          }
           await db.delete(node).where(eq(node.userId, userId))
           await db.delete(nodeUser).where(eq(nodeUser.userId, userId))
         },

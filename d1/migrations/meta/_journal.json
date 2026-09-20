@@ -78,6 +78,13 @@
       "when": 1789879215904,
       "tag": "0010_node-user-nodes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789887405048,
+      "tag": "0011_user-config",
+      "breakpoints": true
     }
   ]
 }

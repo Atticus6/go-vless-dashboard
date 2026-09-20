@@ -45,10 +45,31 @@
   "menu": {
     "nodes": "Nodes",
     "nodeUsers": "Node users",
+    "notify": "Notifications",
+    "config": "Config",
     "settings": "Settings"
   },
   "overview": {
     "loading": "Loading…"
+  },
+  "notify": {
+    "desc": "One notification channel at a time; saving switches (the old one is dropped).",
+    "saved": "Notification config saved",
+    "noChannel": "No enabled channel, pick one before testing",
+    "testOk": "Test notification sent ({{channels}})",
+    "testPartial": "Some channels failed: {{failed}}",
+    "testSend": "Send test",
+    "channel": "Channel",
+    "channelOff": "Off",
+    "feishuTitle": "Feishu bot",
+    "feishuDesc": "Add a custom bot to a group chat, paste the webhook URL; add the secret too if signing is on.",
+    "telegramTitle": "Telegram Bot",
+    "telegramDesc": "Get a bot token from @BotFather, then fill in the chat id (user/group/channel).",
+    "webhook": "Webhook URL",
+    "secret": "Signing secret (optional)",
+    "secretPlaceholder": "Only if the bot requires signing",
+    "botToken": "Bot Token",
+    "chatId": "Chat ID"
   },
   "nodes": {
     "title": "Nodes",

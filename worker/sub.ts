@@ -9,6 +9,7 @@ import {
   resolveSubParams,
 } from '!/lib/subscription'
 import { subQueryInputSchema, subTokenParamSchema } from '!/lib/validators'
+import { notifyUser } from '!/lib/notify'
 import { zValidator } from '!/lib/zod-validator'
 
 // 用户订阅地址：GET /api/sub/:token，返回该 token 可访问的全部 vless 节点。
@@ -55,23 +56,51 @@ const subApp = new Hono<{ Bindings: Env }>().get(
       : owned
 
     // 后端同步靠注册心跳与增删推送保证，这里只组装返回，不做逐节点 ensure.
-  const entries = buildSubEntries(
-    scoped.map((n) => ({
-      id: n.id,
-      name: n.name,
-      reportedUrls: parseReportedUrls(n.reportedUrls),
-      reportedTunnelUrl: n.reportedTunnelUrl,
-    })),
-    token,
-    params,
-  )
+    const entries = buildSubEntries(
+      scoped.map((n) => ({
+        id: n.id,
+        name: n.name,
+        reportedUrls: parseReportedUrls(n.reportedUrls),
+        reportedTunnelUrl: n.reportedTunnelUrl,
+      })),
+      token,
+      params,
+    )
     if (entries.length === 0) return c.text('no nodes available', 404)
-  const { body, contentType } = formatSubBody(
-    format,
-    entries,
-    token,
-    params,
-  )
+    // 订阅被成功拉取：异步通知属主（waitUntil 不阻塞本次返回；未配通知静默跳过）.
+    // 归属地取自 request.cf（边缘节点注入的国家/城市），不展示客户端 UA.
+    const cf = c.req.raw as Request & {
+      cf?: { country?: unknown; city?: unknown }
+    }
+    const country =
+      typeof cf.cf?.country === 'string' && cf.cf.country
+        ? cf.cf.country
+        : '未知'
+    const city =
+      typeof cf.cf?.city === 'string' && cf.cf.city ? cf.cf.city : '未知'
+    c.executionCtx.waitUntil(
+      notifyUser(
+        db,
+        owner.userId,
+        `节点用户「${owner.name}」拉取了订阅`,
+        [
+          `格式：${format}`,
+          `节点：${entries.length} 个`,
+          `IP：${c.req.header('cf-connecting-ip') ?? '未知'}`,
+          `归属地：${country} ${city}`,
+          `时间：${new Date().toISOString()}`,
+        ].join('\n'),
+      ).then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    const { body, contentType } = formatSubBody(
+      format,
+      entries,
+      token,
+      params,
+    )
     return new Response(body, {
       status: 200,
       headers: {
