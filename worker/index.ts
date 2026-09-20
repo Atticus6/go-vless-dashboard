@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { factory, init } from '!/lib/factory'
 import registerApp from '!/register'
+import subApp from '!/sub'
 import { createTRPCContext } from '!/trpc/context'
 import { appRouter } from '!/trpc/router'
 
@@ -16,6 +17,8 @@ const app = new Hono<{ Bindings: Env }>()
   .route('/auth', authApp)
   // 后端反向注册（公开，key 鉴权）：POST /api/nodes/register
   .route('/nodes', registerApp)
+  // 用户订阅地址（公开，token 即凭证）：GET /api/sub/:token
+  .route('/sub', subApp)
   .get('/health', (c) => {
     console.log(
       JSON.stringify({

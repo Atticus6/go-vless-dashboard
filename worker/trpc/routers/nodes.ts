@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
-import { node, nodeUser, type NodeRow } from '!/db/app-schema'
+import { node, nodeUser, nodeUserNode, type NodeRow } from '!/db/app-schema'
 import type { Database } from '!/db/index'
 import { generateId } from '!/lib/utils'
 import {
@@ -10,6 +10,7 @@ import {
   nodeUserCreateInputSchema,
   nodeUserEnsureInputSchema,
   nodeUserRemoveInputSchema,
+  nodeUserScopeInputSchema,
   updateNodeInputSchema,
   usersInputSchema,
 } from '!/lib/validators'
@@ -157,7 +158,8 @@ async function proxyUsers(
   return check.body as { ok: true; users: string[] }
 }
 
-// 增删节点用户时广播推送到名下已配置节点（尽力而为）：
+// 增删节点用户时广播推送到范围内已配置节点（尽力而为）：
+// scopeNodeIds 为空（null 或空数组）推送全部名下节点，否则只推所列节点；
 // 在线节点即刻生效；离线/推送失败的节点下次反向注册拉取时自动对账.
 // 永不抛错，调用方落库成功后调用，失败只进 failed 名单.
 interface PushSummary {
@@ -170,16 +172,22 @@ async function broadcastUserToken(
   userId: string,
   action: 'add' | 'remove',
   token: string,
+  scopeNodeIds: string[] | null,
 ): Promise<PushSummary> {
   const owned = await db
     .select({
+      id: node.id,
       name: node.name,
       baseUrl: node.baseUrl,
       configKey: node.configKey,
     })
     .from(node)
     .where(eq(node.userId, userId))
-  const targets = owned.filter(
+  const inScope =
+    scopeNodeIds && scopeNodeIds.length > 0
+      ? owned.filter((n) => scopeNodeIds.includes(n.id))
+      : owned
+  const targets = inScope.filter(
     (n): n is typeof n & { baseUrl: string; configKey: string } =>
       !!n.baseUrl && !!n.configKey,
   )
@@ -386,8 +394,10 @@ export const nodesRouter = router({
   }),
 
   // 节点订阅用户（归属当前用户）：创建时服务端签发 UUID token，
-  // 落库后广播推送到名下已配置节点；离线节点下次注册拉取时自动补齐.
+  // 可限定多个节点（空即全部节点）；落库后广播推送到范围内已配置节点；
+  // 离线节点下次注册拉取时自动补齐.
   nodeUserList: authedProcedure.query(async ({ ctx }) => {
+    const me = ctx.session.user.id
     const rows = await ctx.db
       .select({
         id: nodeUser.id,
@@ -396,38 +406,90 @@ export const nodesRouter = router({
         createdAt: nodeUser.createdAt,
       })
       .from(nodeUser)
-      .where(eq(nodeUser.userId, ctx.session.user.id))
+      .where(eq(nodeUser.userId, me))
+    const owned = await ctx.db
+      .select({ id: node.id, name: node.name })
+      .from(node)
+      .where(eq(node.userId, me))
+    const names = new Map(owned.map((n) => [n.id, n.name] as const))
+    const ownedIds = new Set(owned.map((n) => n.id))
+    const linkRows =
+      rows.length === 0
+        ? []
+        : await ctx.db
+            .select({
+              nodeUserId: nodeUserNode.nodeUserId,
+              nodeId: nodeUserNode.nodeId,
+            })
+            .from(nodeUserNode)
+            .innerJoin(nodeUser, eq(nodeUserNode.nodeUserId, nodeUser.id))
+            .where(eq(nodeUser.userId, me))
+    const byUser = new Map<string, string[]>()
+    for (const l of linkRows) {
+      if (!ownedIds.has(l.nodeId)) continue
+      const arr = byUser.get(l.nodeUserId) ?? []
+      arr.push(l.nodeId)
+      byUser.set(l.nodeUserId, arr)
+    }
     return {
-      users: rows.map((row) => ({
-        ...row,
-        createdAt: toISO(row.createdAt),
-      })),
+      users: rows.map((row) => {
+        const nodeIds = byUser.get(row.id) ?? []
+        return {
+          id: row.id,
+          name: row.name,
+          token: row.token,
+          nodeIds,
+          nodeNames: nodeIds.map((id) => names.get(id) ?? id),
+          createdAt: toISO(row.createdAt),
+        }
+      }),
     }
   }),
 
   nodeUserCreate: authedProcedure
     .input(nodeUserCreateInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id
+      // 限定节点必须全部归属自己，否则直接拒绝（防跨用户 id 穿透）；
+      // 空数组 = 全部节点，不写关联行.
+      const scopeNodeIds = [...new Set(input.nodeIds ?? [])]
+      if (scopeNodeIds.length > 0) {
+        const owned = await ctx.db
+          .select({ id: node.id })
+          .from(node)
+          .where(eq(node.userId, me))
+        const ownedSet = new Set(owned.map((n) => n.id))
+        if (!scopeNodeIds.every((id) => ownedSet.has(id))) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'node not found' })
+        }
+      }
       const row = {
         id: generateId(),
-        userId: ctx.session.user.id,
+        userId: me,
         name: input.name,
         token: crypto.randomUUID(),
         createdAt: new Date(),
         updatedAt: new Date(),
       }
       await ctx.db.insert(nodeUser).values(row)
+      if (scopeNodeIds.length > 0) {
+        await ctx.db.insert(nodeUserNode).values(
+          scopeNodeIds.map((nodeId) => ({ nodeUserId: row.id, nodeId })),
+        )
+      }
       const sync = await broadcastUserToken(
         ctx.db,
-        ctx.session.user.id,
+        me,
         'add',
         row.token,
+        scopeNodeIds,
       )
       return {
         user: {
           id: row.id,
           name: row.name,
           token: row.token,
+          nodeIds: scopeNodeIds,
           createdAt: toISO(row.createdAt),
         },
         sync,
@@ -450,13 +512,81 @@ export const nodesRouter = router({
       if (!record) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
       }
-      // 先广播移除（在线即刻失效），再落库删除；离线节点下次注册对账时移除.
-      const sync = await broadcastUserToken(db, me, 'remove', record.token)
+      const links = await db
+        .select({ nodeId: nodeUserNode.nodeId })
+        .from(nodeUserNode)
+        .where(eq(nodeUserNode.nodeUserId, record.id))
+      // 先广播移除（范围内在线节点即刻失效），再落库删除（关联级联）；
+      // 离线节点下次注册对账时移除.
+      const sync = await broadcastUserToken(
+        db,
+        me,
+        'remove',
+        record.token,
+        links.map((l) => l.nodeId),
+      )
       await db.delete(nodeUser).where(eq(nodeUser.id, input.nodeUserId))
       return { ok: true as const, sync }
     }),
 
+  // 可用范围更新：换关联行（空即全部节点），并按增减 diff 推送——
+  // 新加入的节点 add，移出的节点 remove，离线节点下次注册对账.
+  nodeUserScope: authedProcedure
+    .input(nodeUserScopeInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const rows = await db
+        .select({ id: nodeUser.id, token: nodeUser.token })
+        .from(nodeUser)
+        .where(
+          and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
+        )
+        .limit(1)
+      const record = rows[0]
+      if (!record) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
+      }
+      const nextIds = [...new Set(input.nodeIds ?? [])]
+      if (nextIds.length > 0) {
+        const owned = await db
+          .select({ id: node.id })
+          .from(node)
+          .where(eq(node.userId, me))
+        const ownedSet = new Set(owned.map((n) => n.id))
+        if (!nextIds.every((id) => ownedSet.has(id))) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'node not found' })
+        }
+      }
+      const prevLinks = await db
+        .select({ nodeId: nodeUserNode.nodeId })
+        .from(nodeUserNode)
+        .where(eq(nodeUserNode.nodeUserId, record.id))
+      const prevIds = prevLinks.map((l) => l.nodeId)
+      const added = nextIds.filter((id) => !prevIds.includes(id))
+      const removed = prevIds.filter((id) => !nextIds.includes(id))
+      await db.delete(nodeUserNode).where(eq(nodeUserNode.nodeUserId, record.id))
+      if (nextIds.length > 0) {
+        await db.insert(nodeUserNode).values(
+          nextIds.map((nodeId) => ({ nodeUserId: record.id, nodeId })),
+        )
+      }
+      const syncs = await Promise.all([
+        added.length > 0
+          ? broadcastUserToken(db, me, 'add', record.token, added)
+          : { synced: [], failed: [] },
+        removed.length > 0
+          ? broadcastUserToken(db, me, 'remove', record.token, removed)
+          : { synced: [], failed: [] },
+      ])
+      const sync: PushSummary = {
+        synced: syncs.flatMap((s) => s.synced),
+        failed: syncs.flatMap((s) => s.failed),
+      }
+      return { ok: true as const, sync }
+    }),
   // 复制订阅链接前调用：把该 token 同步到目标节点后端（后端 add 幂等）。
+  // 无关联行 = 全部节点放行；有关联行则必须含目标节点，否则直接拒绝.
   nodeUserEnsure: authedProcedure
     .input(nodeUserEnsureInputSchema)
     .mutation(async ({ ctx, input }) => {
@@ -474,6 +604,16 @@ export const nodesRouter = router({
       const record = rows[0]
       if (!record) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'node user not found' })
+      }
+      const links = await db
+        .select({ nodeId: nodeUserNode.nodeId })
+        .from(nodeUserNode)
+        .where(eq(nodeUserNode.nodeUserId, input.nodeUserId))
+      if (links.length > 0 && !links.some((l) => l.nodeId === input.id)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'node user not allowed on this node',
+        })
       }
       await proxyUsers('add', target, [record.token])
       return { ok: true as const }

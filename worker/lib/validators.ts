@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { subFormatSchema, subQuerySchema } from '!/lib/subscription'
 
 const invalidName = 'invalid name'
 const invalidBaseUrl = 'invalid baseUrl (want http(s)://host[:port])'
@@ -73,14 +74,21 @@ export const usersInputSchema = z.object({
   uuids: uuidListSchema,
 })
 
-// 节点订阅用户：按名称创建，token 服务端签发；按行 id 删除；
-// 复制订阅链接前按（节点 id + 行 id）同步到目标后端。
+// 节点订阅用户：按名称创建（可限定多个节点，空即全部节点），token 服务端签发；
+// 按行 id 删除；复制订阅链接前按（节点 id + 行 id）同步到目标后端。
 export const nodeUserCreateInputSchema = z.object({
   name: nodeNameSchema,
+  nodeIds: z.array(nodeIdSchema).max(50).optional(),
 })
 
 export const nodeUserRemoveInputSchema = z.object({
   nodeUserId: nodeIdSchema,
+})
+
+// 节点用户可用范围更新：空数组 = 全部节点，否则只用于所列节点.
+export const nodeUserScopeInputSchema = z.object({
+  nodeUserId: nodeIdSchema,
+  nodeIds: z.array(nodeIdSchema).max(50).optional(),
 })
 
 export const nodeUserEnsureInputSchema = z.object({
@@ -142,6 +150,16 @@ export const backendStatusSchema = z.object({
 })
 
 export type BackendStatus = z.infer<typeof backendStatusSchema>
+
+// 订阅地址入参（GET /api/sub/:token）：token 为路径参数，
+// format/port/security 为查询参数，全部显式校验（非法直接 400）.
+export const subTokenParamSchema = z.object({
+  token: z.string().trim().min(1),
+})
+
+export const subQueryInputSchema = subQuerySchema.extend({
+  format: subFormatSchema.optional(),
+})
 
 // 后端反向注册请求体（公开接口，靠 id + key 鉴权）.
 export const registerBodySchema = z.object({

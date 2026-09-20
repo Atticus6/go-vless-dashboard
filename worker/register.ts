@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
-import { node, nodeUser } from '!/db/app-schema'
+import { and, eq, exists, notExists, or } from 'drizzle-orm'
+import { node, nodeUser, nodeUserNode } from '!/db/app-schema'
 import { createDb } from '!/db/index'
 import { registerBodySchema } from '!/lib/validators'
 import { zValidator } from '!/lib/zod-validator'
@@ -52,7 +52,8 @@ const registerApp = new Hono<{ Bindings: Env }>().post(
     const reportedTunnel = tunnelUrl?.trim() ? tunnelUrl.trim() : null
     const candidates = [...reportedUrls]
     if (reportedTunnel) candidates.push(reportedTunnel)
-    // 上报原值每次落库；baseUrl 仅在未配置时自动填入，手动填过永不覆盖。
+    // 上报原值每次落库；baseUrl 每次注册都用最新上报地址刷新：
+    // urls 按序优先，其次隧道地址（最不可靠，垫底），都没上报则保留原值.
     const patch: {
       lastSeenAt: Date
       backendVersion: string | null
@@ -65,15 +66,35 @@ const registerApp = new Hono<{ Bindings: Env }>().post(
       reportedUrls: JSON.stringify(reportedUrls),
       reportedTunnelUrl: reportedTunnel,
     }
-    if (!target.baseUrl && candidates.length > 0 && candidates[0]) {
+    if (candidates.length > 0 && candidates[0]) {
       patch.baseUrl = candidates[0]
     }
     await db.update(node).set(patch).where(eq(node.id, id))
-    // 所属用户的节点用户 token：后端注册成功后拉取为 VLESS uuid（无用户时为空数组）.
+    // 所属用户的节点用户 token：只下发本节点范围内的
+    // （无关联行=全部节点，有关联行则须含本节点）；后端注册成功后拉取为 VLESS uuid.
+    const linksOf = (nodeId: string) =>
+      db
+        .select({ nodeUserId: nodeUserNode.nodeUserId })
+        .from(nodeUserNode)
+        .where(
+          and(
+            eq(nodeUserNode.nodeUserId, nodeUser.id),
+            eq(nodeUserNode.nodeId, nodeId),
+          ),
+        )
+    const anyLink = db
+      .select({ nodeUserId: nodeUserNode.nodeUserId })
+      .from(nodeUserNode)
+      .where(eq(nodeUserNode.nodeUserId, nodeUser.id))
     const userRows = await db
       .select({ token: nodeUser.token })
       .from(nodeUser)
-      .where(eq(nodeUser.userId, target.userId))
+      .where(
+        and(
+          eq(nodeUser.userId, target.userId),
+          or(notExists(anyLink), exists(linksOf(target.id))),
+        ),
+      )
     return c.json({
       ok: true,
       heartbeatIntervalSec: HEARTBEAT_INTERVAL_SEC,

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -38,9 +39,12 @@ export const node = sqliteTable('node', {
 
 export type NodeRow = typeof node.$inferSelect
 
-// 节点订阅用户（归属 dashboard 用户，不绑特定节点，可用于名下任一节点）：
+// 节点订阅用户（归属 dashboard 用户）：
 // 每条带一个 UUID token；复制订阅链接时自动同步到目标节点后端。
 // 创建者删号连带清理。
+//
+// 可用范围走 nodeUserNode 关联表：无关联行表示全部节点，
+// 有关联行则只用于所列节点（增删广播、注册拉取、复制同步都按此收敛）.
 export const nodeUser = sqliteTable(
   'node_user',
   {
@@ -64,3 +68,20 @@ export const nodeUser = sqliteTable(
 )
 
 export type NodeUserRow = typeof nodeUser.$inferSelect
+
+// 节点用户与节点的关联（可用范围）：一行一对，无行即全部节点.
+// 任一端删除连带清理关联行（用户删光则回到全部节点语义）.
+export const nodeUserNode = sqliteTable(
+  'node_user_node',
+  {
+    nodeUserId: text('node_user_id')
+      .notNull()
+      .references(() => nodeUser.id, { onDelete: 'cascade' }),
+    nodeId: text('node_id')
+      .notNull()
+      .references(() => node.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.nodeUserId, t.nodeId] })],
+)
+
+export type NodeUserNodeRow = typeof nodeUserNode.$inferSelect

@@ -761,9 +761,12 @@ function CopyVlessDialog({
 
 function CopyVlessBody({ item }: { item: NodeItem }) {
   const { t } = useTranslation()
-  // UUID 取当前用户的节点用户（token 即订阅链接的 uuid）。
+  // UUID 取当前用户的节点用户（token 即订阅链接的 uuid），
+  // 只列出本节点范围内的（无关联=全部节点，有关联须含本节点）.
   const listQuery = trpc.nodes.nodeUserList.useQuery()
-  const nodeUsers = listQuery.data?.users ?? []
+  const nodeUsers = (listQuery.data?.users ?? []).filter(
+    (u) => u.nodeIds.length === 0 || u.nodeIds.includes(item.id),
+  )
   const [nodeUserId, setNodeUserId] = useState('')
   const selected = nodeUsers.find((u) => u.id === nodeUserId) ?? null
   const token = selected?.token ?? ''
