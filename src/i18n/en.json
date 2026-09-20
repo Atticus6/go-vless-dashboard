@@ -132,6 +132,15 @@
     "regNextSync": "Next sync in ~{{count}} min",
     "regSyncedUsers": "Synced users: {{count}}",
     "regLastChange": "Last change +{{added}} −{{removed}}",
-    "regLastError": "Last error"
+    "regLastError": "Last error",
+    "tlsTitle": "HTTPS certificate",
+    "tlsEnabled": "Enabled",
+    "tlsDisabled": "Disabled",
+    "tlsExpired": "Expired",
+    "tlsExpiring": "Expiring within 30 days, check port 80 and renewal",
+    "tlsDomain": "Certificate domain",
+    "tlsExpires": "Expires",
+    "tlsNoCert": "No certificate yet (waiting for first handshake)",
+    "tlsDaysLeft": "{{count}} days left"
   }
 }

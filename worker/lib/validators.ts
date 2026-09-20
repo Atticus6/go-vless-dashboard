@@ -105,6 +105,17 @@ export const backendRegisterSchema = z.object({
 
 export type BackendRegister = z.infer<typeof backendRegisterSchema>
 
+// 节点端 /config 的 tls 段：HTTPS 是否启用、证书域名与到期时间。
+// 老版本后端没有该段按 undefined 处理.
+export const backendTLSStatusSchema = z.object({
+  enabled: z.boolean(),
+  domain: z.string().optional(),
+  expiresAt: z.string().nullable().optional(),
+  daysLeft: z.number().optional(),
+})
+
+export type BackendTLSStatus = z.infer<typeof backendTLSStatusSchema>
+
 // Go 后端 /config 返回体的输出契约：worker 用它运行时校验，后端改字段会直接 500 而不是透出 undefined。
 export const backendStatusSchema = z.object({
   tunnel: z.boolean(),
@@ -127,6 +138,7 @@ export const backendStatusSchema = z.object({
   }),
   uptime: z.string(),
   register: backendRegisterSchema.optional(),
+  tls: backendTLSStatusSchema.optional(),
 })
 
 export type BackendStatus = z.infer<typeof backendStatusSchema>

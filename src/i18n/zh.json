@@ -132,6 +132,15 @@
     "regNextSync": "下次同步约 {{count}} 分钟",
     "regSyncedUsers": "已同步用户 {{count}} 个",
     "regLastChange": "上次变更 +{{added}} −{{removed}}",
-    "regLastError": "最近错误"
+    "regLastError": "最近错误",
+    "tlsTitle": "HTTPS 证书",
+    "tlsEnabled": "已启用",
+    "tlsDisabled": "未启用",
+    "tlsExpired": "已过期",
+    "tlsExpiring": "30 天内到期，请检查 80 端口与续签",
+    "tlsDomain": "证书域名",
+    "tlsExpires": "到期时间",
+    "tlsNoCert": "暂无证书（等待首次握手）",
+    "tlsDaysLeft": "剩余 {{count}} 天"
   }
 }

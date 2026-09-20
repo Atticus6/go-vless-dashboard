@@ -474,17 +474,21 @@ function RegisterSyncInfo({ nodeId }: { nodeId: string }) {
       </p>
     )
   }
-  const reg = statusQuery.data?.register
-  if (!reg) return null
-  return <RegisterSyncDetail reg={reg} />
+  const data = statusQuery.data
+  if (!data) return null
+  return (
+    <>
+      {data.register && <RegisterSyncDetail reg={data.register} />}
+      <TLSCertDetail tls={data.tls} />
+    </>
+  )
 }
 
 function RegisterSyncDetail({
   reg,
 }: {
   reg: NonNullable<BackendStatus['register']>
-}) {
-  const { t } = useTranslation()
+}) {  const { t } = useTranslation()
   const connected = reg.enabled && !reg.lastError && !!reg.lastSuccessAt
   const failed = reg.enabled && !!reg.lastError
 
@@ -569,6 +573,72 @@ function RegisterSyncDetail({
               <dd className="min-w-0 flex-1 break-all text-destructive">
                 {reg.lastError}
               </dd>
+            </div>
+          )}
+        </dl>
+      )}
+    </div>
+  )
+}
+
+// 节点端 /config 的 tls 段：HTTPS 证书状态（域名、到期时间、剩余天数）。
+// 老版本后端无该段时不展示；已启用但尚无证书（等待首次握手）提示等待。
+function TLSCertDetail({ tls }: { tls: BackendStatus['tls'] }) {
+  const { t } = useTranslation()
+  if (!tls) return null
+  const daysLeft = tls.daysLeft ?? Number.POSITIVE_INFINITY
+  const expired = tls.enabled && daysLeft < 0
+  const expiring = tls.enabled && !expired && daysLeft < 30
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{t('nodes.tlsTitle')}</span>
+        {!tls.enabled ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            {t('nodes.tlsDisabled')}
+          </Badge>
+        ) : expired ? (
+          <Badge variant="destructive">{t('nodes.tlsExpired')}</Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            {t('nodes.tlsEnabled')}
+          </Badge>
+        )}
+      </div>
+      {tls.enabled && (
+        <dl className="space-y-1 text-xs">
+          {tls.domain && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.tlsDomain')}
+              </dt>
+              <dd className="min-w-0 flex-1 truncate font-mono">
+                {tls.domain}
+              </dd>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <dt className="shrink-0 text-muted-foreground">
+              {t('nodes.tlsExpires')}
+            </dt>
+            <dd className="flex-1">
+              {tls.expiresAt
+                ? new Date(tls.expiresAt).toLocaleString()
+                : t('nodes.tlsNoCert')}
+            </dd>
+          </div>
+          {tls.expiresAt && tls.daysLeft !== undefined && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {t('nodes.tlsDaysLeft', { count: tls.daysLeft })}
+              </dt>
+              {(expired || expiring) && (
+                <dd className="flex-1 text-destructive">
+                  {expired ? t('nodes.tlsExpired') : t('nodes.tlsExpiring')}
+                </dd>
+              )}
             </div>
           )}
         </dl>
