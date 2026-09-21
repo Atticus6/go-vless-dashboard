@@ -37,6 +37,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatNodeName } from '@/lib/country'
+import { TableSkeleton } from '@/components/loading-skeletons'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -296,9 +297,7 @@ function TrafficPage() {
         </CardContent>
       </Card>
 
-      {loading && (
-        <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
-      )}
+      {loading && <TableSkeleton rows={8} cols={6} />}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!loading && !error && (

@@ -43,6 +43,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatNodeName } from '@/lib/country'
+import { TableSkeleton } from '@/components/loading-skeletons'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -402,9 +403,7 @@ function NodeUsersPage() {
         <Button onClick={() => setAddOpen(true)}>{t('nodes.nodeUserAdd')}</Button>
       </div>
 
-      {loading && (
-        <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
-      )}
+      {loading && <TableSkeleton rows={5} cols={4} avatar />}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!loading && !error && (

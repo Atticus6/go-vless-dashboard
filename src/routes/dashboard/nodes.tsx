@@ -2,12 +2,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
@@ -74,6 +75,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DetailBoxSkeleton,
+  TableSkeleton,
+} from '@/components/loading-skeletons'
 import {
   Accordion,
   AccordionContent,
@@ -251,9 +257,24 @@ function NodesPage() {
     onSettled: () => void utils.nodes.list.invalidate(),
   })
 
+  // 浮层拖拽的被拖项：原行只留半透明占位，动画由浮层承担，不抖.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeItem = activeId
+    ? (nodes.find((n) => n.id === activeId) ?? null)
+    : null
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id))
+  }
+
+  function handleDragCancel() {
+    setActiveId(null)
+  }
+
   // 拖拽结束：按新位置重排后落库（原地释放不处理）.
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
+    setActiveId(null)
     if (over === null || active.id === over.id) return
     const ids = nodes.map((n) => n.id)
     const from = ids.indexOf(String(active.id))
@@ -287,9 +308,7 @@ function NodesPage() {
         </div>
       </div>
 
-      {loading && (
-        <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
-      )}
+      {loading && <TableSkeleton rows={5} cols={4} avatar />}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {!loading && !error && nodes.length === 0 && (
@@ -359,7 +378,9 @@ function NodesPage() {
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   modifiers={[restrictToVerticalAxis]}
+                  onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
+                  onDragCancel={handleDragCancel}
                 >
                   <SortableContext
                     items={nodes.map((n) => n.id)}
@@ -375,6 +396,21 @@ function NodesPage() {
                       />
                     ))}
                   </SortableContext>
+                  {/* 拖拽浮层：跟随指针的轻量预览（仅图标 + 名称），
+                    原行保留占位，松手回落动画由浮层完成. */}
+                  <DragOverlay>
+                    {activeItem ? (
+                      <div className="flex items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg">
+                        <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate font-medium">
+                          {formatNodeName(
+                            activeItem.name,
+                            activeItem.countryCode,
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
+                  </DragOverlay>
                 </DndContext>
               </TableBody>
             </Table>
@@ -520,8 +556,8 @@ function UpdateAllDialog({
   )
 }
 
-// 可排序的节点行：transform 做位移动画，拖拽手柄独占 listeners，
-// 行内按钮不受影响；拖拽中提升层级并半透明.
+// 可排序的节点行：列表内位移动画只做让位，被拖行半透明留占位，
+// 真正跟随指针的是 DragOverlay 浮层；拖拽手柄独占 listeners，行内按钮不受影响.
 function NodeTableRow({
   item,
   selected,
@@ -547,7 +583,7 @@ function NodeTableRow({
     <TableRow
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={isDragging ? 'relative z-10 opacity-80 shadow-lg' : undefined}
+      className={isDragging ? 'opacity-30' : undefined}
     >
       <TableCell>
         <Checkbox
@@ -898,13 +934,10 @@ function TestBody({ nodeId }: { nodeId: string }) {
 // 节点端 /config 的 register 段：服务端（dashboard）注册/同步状态.
 // 老版本后端没有该段时不展示.
 function RegisterSyncInfo({ nodeId }: { nodeId: string }) {
-  const { t } = useTranslation()
   const statusQuery = trpc.nodes.status.useQuery({ id: nodeId })
 
   if (statusQuery.isPending) {
-    return (
-      <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
-    )
+    return <DetailBoxSkeleton />
   }
   if (statusQuery.isError) {
     return (
@@ -1383,10 +1416,7 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
       <div className="grid gap-2">
         <Label htmlFor="vless-user">{t('nodes.subUuid')}</Label>
         {listQuery.isPending ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner className="size-3.5" />
-            {t('overview.loading')}
-          </p>
+          <Skeleton className="h-8 w-full" />
         ) : nodeUsers.length > 0 ? (
           <>
             <Select

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { FormSkeleton } from '@/components/loading-skeletons'
 import {
   Card,
   CardContent,
@@ -137,7 +138,11 @@ function ConfigPage() {
       </div>
 
       {configQuery.isPending && (
-        <p className="text-sm text-muted-foreground">{t('overview.loading')}</p>
+        <Card>
+          <CardContent className="pt-6">
+            <FormSkeleton rows={4} />
+          </CardContent>
+        </Card>
       )}
 
       {configQuery.data && (
