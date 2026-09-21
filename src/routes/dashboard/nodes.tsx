@@ -27,6 +27,7 @@ import {
   Server,
   Terminal,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
@@ -48,6 +49,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Card,
   CardContent,
@@ -111,6 +113,38 @@ type NodeDialogKind =
   | 'copyVless'
   | 'edit'
   | 'delete'
+  | 'update'
+
+// 批量更新结果拼到 toast 后面：已通知 / 部分失败 / 离线跳过.
+function formatUpdateSummary(
+  summary: { started: string[]; failed: string[]; skipped: string[] },
+  t: (key: string, opts?: Record<string, string | number>) => string,
+): string {
+  const parts: string[] = []
+  if (summary.started.length > 0) {
+    parts.push(
+      t('nodes.updateAllStarted', { count: summary.started.length }),
+    )
+  }
+  if (summary.failed.length > 0) {
+    parts.push(
+      t('nodes.updateAllFailed', {
+        count: summary.failed.length,
+        names: summary.failed.join('、'),
+      }),
+    )
+  }
+  if (summary.skipped.length > 0) {
+    parts.push(
+      t('nodes.updateAllSkipped', {
+        count: summary.skipped.length,
+        names: summary.skipped.join('、'),
+      }),
+    )
+  }
+  if (parts.length === 0) return `，${t('nodes.nodeUserNoNodes')}`
+  return `，${parts.join('，')}`
+}
 
 export const Route = createFileRoute('/dashboard/nodes')({
   component: NodesPage,
@@ -126,6 +160,12 @@ function NodesPage() {
       ? listQuery.error.message
       : null
   const [addOpen, setAddOpen] = useState(false)
+  const [updateAllOpen, setUpdateAllOpen] = useState(false)
+  // 批量更新支持选中子集：null = 全部在线节点，否则只推所选.
+  const [updateIds, setUpdateIds] = useState<string[] | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  // 多选：存 id 数组，翻页/刷新后按现有节点过滤使用.
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [active, setActive] = useState<{
     kind: NodeDialogKind
     item: NodeItem
@@ -135,6 +175,50 @@ function NodesPage() {
   const createNode = trpc.nodes.create.useMutation({
     onSuccess: () => void utils.nodes.invalidate(),
   })
+  // 批量删除：成功清选择，失败 toast（服务端逐个验归属，部分成功不回滚）.
+  const removeNodes = trpc.nodes.removeNodes.useMutation({
+    onSuccess: (res) => {
+      setSelectedIds([])
+      toast.success(t('nodes.nodesDeleted', { count: res.deleted }))
+      void utils.nodes.invalidate()
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'failed')
+      void utils.nodes.invalidate()
+    },
+  })
+
+  // 存量选择与现存节点取交集（删过的 id 自动丢掉）.
+  const validSelectedIds = selectedIds.filter((id) =>
+    nodes.some((n) => n.id === id),
+  )
+  const allSelected =
+    nodes.length > 0 && validSelectedIds.length === nodes.length
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? [] : nodes.map((n) => n.id))
+  }
+
+  function openBulkUpdate() {
+    setUpdateIds(validSelectedIds)
+    setUpdateAllOpen(true)
+  }
+
+  async function handleBulkDelete() {
+    if (validSelectedIds.length === 0) return
+    try {
+      await removeNodes.mutateAsync({ ids: validSelectedIds })
+      setBulkDeleteOpen(false)
+    } catch {
+      // 错误已在 onError toast，弹窗保持打开方便重试.
+    }
+  }
   // 拖拽传感器：指针拖动手柄，键盘方向键移动（无障碍）.
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -195,7 +279,12 @@ function NodesPage() {
           </h1>
           <p className="text-sm text-muted-foreground">{t('nodes.desc')}</p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>{t('nodes.add')}</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setUpdateAllOpen(true)}>
+            {t('nodes.updateAll')}
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>{t('nodes.add')}</Button>
+        </div>
       </div>
 
       {loading && (
@@ -212,12 +301,48 @@ function NodesPage() {
         </Card>
       )}
 
+      {/* 选中行批量操作条：计数 + 更新/删除/取消. */}
+      {validSelectedIds.length > 0 && (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/50 px-3 py-2">
+          <p className="text-sm text-muted-foreground">
+            {t('nodes.selectedCount', {
+              count: validSelectedIds.length,
+            })}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={openBulkUpdate}>
+              {t('nodes.bulkUpdate')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              {t('nodes.bulkDelete')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
+              {t('nodes.clearSelection')}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {nodes.length > 0 && (
         <Card>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected}
+                      indeterminate={
+                        !allSelected && validSelectedIds.length > 0
+                      }
+                      onCheckedChange={toggleSelectAll}
+                      aria-label={t('nodes.selectAll')}
+                    />
+                  </TableHead>
                   <TableHead className="w-10">
                     <span className="sr-only">{t('nodes.sort')}</span>
                   </TableHead>
@@ -244,6 +369,8 @@ function NodesPage() {
                       <NodeTableRow
                         key={item.id}
                         item={item}
+                        selected={validSelectedIds.includes(item.id)}
+                        onToggle={toggleSelect}
                         onOpen={open}
                       />
                     ))}
@@ -285,7 +412,111 @@ function NodesPage() {
         item={active?.kind === 'delete' ? active.item : null}
         onClose={() => close('delete')}
       />
+      <UpdateDialog
+        item={active?.kind === 'update' ? active.item : null}
+        onClose={() => close('update')}
+      />
+      <UpdateAllDialog
+        open={updateAllOpen}
+        ids={updateIds}
+        onClose={() => {
+          setUpdateAllOpen(false)
+          setUpdateIds(null)
+        }}
+      />
+      <AlertDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(next) => {
+          if (!next) setBulkDeleteOpen(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('nodes.deleteNodesTitle', { count: validSelectedIds.length })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('nodes.deleteNodesDesc')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('nodes.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={removeNodes.isPending}
+              onClick={() => void handleBulkDelete()}
+            >
+              {t('nodes.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
+  )
+}
+
+// 广播更新二次确认：ids 为 null 推全部在线节点，否则只推所选子集；
+// 结果拼条数与名单 toast.
+function UpdateAllDialog({
+  open,
+  ids,
+  onClose,
+}: {
+  open: boolean
+  ids: string[] | null
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const updateAll = trpc.nodes.updateAllBackends.useMutation()
+  const updateSome = trpc.nodes.updateBackends.useMutation()
+  const pending = updateAll.isPending || updateSome.isPending
+
+  async function handleConfirm() {
+    try {
+      const res =
+        ids === null
+          ? await updateAll.mutateAsync({})
+          : await updateSome.mutateAsync({ ids })
+      toast.success(
+        `${t('nodes.updateAllDone')}${formatUpdateSummary(res, t)}`,
+      )
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'failed')
+    }
+  }
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {ids === null
+              ? t('nodes.updateAllTitle')
+              : t('nodes.updateSelectedTitle', { count: ids.length })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {ids === null
+              ? t('nodes.updateAllDesc')
+              : t('nodes.updateSelectedDesc')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('nodes.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            onClick={() => void handleConfirm()}
+          >
+            {ids === null ? t('nodes.updateAll') : t('nodes.bulkUpdate')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -293,9 +524,13 @@ function NodesPage() {
 // 行内按钮不受影响；拖拽中提升层级并半透明.
 function NodeTableRow({
   item,
+  selected,
+  onToggle,
   onOpen,
 }: {
   item: NodeItem
+  selected: boolean
+  onToggle: (id: string) => void
   onOpen: (kind: NodeDialogKind, item: NodeItem) => void
 }) {
   const { t } = useTranslation()
@@ -314,6 +549,13 @@ function NodeTableRow({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={isDragging ? 'relative z-10 opacity-80 shadow-lg' : undefined}
     >
+      <TableCell>
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggle(item.id)}
+          aria-label={item.name}
+        />
+      </TableCell>
       <TableCell>
         <span
           {...attributes}
@@ -376,10 +618,14 @@ function NodeTableRow({
               <Terminal className="text-muted-foreground" />
               {t('nodes.installCommands')}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpen('copyVless', item)}>
-              <Copy className="text-muted-foreground" />
-              {t('nodes.copySubscription')}
-            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onOpen('copyVless', item)}>
+                              <Copy className="text-muted-foreground" />
+                              {t('nodes.copySubscription')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onOpen('update', item)}>
+                              <Upload className="text-muted-foreground" />
+                              {t('nodes.updateBackend')}
+                            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onOpen('edit', item)}>
               <Pencil className="text-muted-foreground" />
               {t('nodes.edit')}
@@ -491,6 +737,89 @@ function TestDialog({
             </DialogDescription>
         </DialogHeader>
         {item && <TestBody key={item.id} nodeId={item.id} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// 单节点程序自更新：版本留空跟最新版，否则按 tag 精确更新；
+// 后端接受即回（下载替换耗时远超请求超时），成败看后端日志与版本号变化.
+function UpdateDialog({
+  item,
+  onClose,
+}: {
+  item: NodeItem | null
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const [version, setVersion] = useState('')
+  const updateBackend = trpc.nodes.updateBackend.useMutation()
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!item) return
+    try {
+      const inputVersion = version.trim()
+      await updateBackend.mutateAsync({
+        id: item.id,
+        version: inputVersion === '' ? undefined : inputVersion,
+      })
+      toast.success(
+        t('nodes.updateStarted', {
+          name: formatNodeName(item.name, item.countryCode),
+        }),
+      )
+      setVersion('')
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'failed')
+    }
+  }
+
+  return (
+    <Dialog
+      open={item !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setVersion('')
+          onClose()
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('nodes.updateBackend')}</DialogTitle>
+          <DialogDescription>
+            {item ? formatNodeName(item.name, item.countryCode) : ''}
+          </DialogDescription>
+        </DialogHeader>
+        {item && (
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            <div className="grid gap-2">
+              <Label htmlFor="node-update-version">
+                {t('nodes.updateVersion')}
+              </Label>
+              <Input
+                id="node-update-version"
+                value={version}
+                onChange={(event) => setVersion(event.target.value)}
+                placeholder={t('nodes.updateVersionHint')}
+                maxLength={32}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('nodes.updateHint')}
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>
+                {t('nodes.cancel')}
+              </Button>
+              <Button type="submit" disabled={updateBackend.isPending}>
+                {t('nodes.updateBackend')}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -833,6 +1162,14 @@ function NodeInfoDetail({ data }: { data: BackendStatus }) {
             title={`alloc ${data.memory.alloc} / sys ${data.memory.sys}`}
           >
             {data.memory.rss}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoVersion')}
+          </dt>
+          <dd className="min-w-0 flex-1 break-all font-mono">
+            {data.version ?? t('nodes.nodeInfoVersionUnknown')}
           </dd>
         </div>
         <div className="flex gap-2">

@@ -18,8 +18,12 @@ import {
   nodeUserRemoveInputSchema,
   nodeUserRenameInputSchema,
   nodeUserScopeInputSchema,
+  removeNodesInputSchema,
   reorderNodesInputSchema,
   trafficListInputSchema,
+  updateAllBackendsInputSchema,
+  updateBackendInputSchema,
+  updateBackendsInputSchema,
   updateNodeInputSchema,
   usersInputSchema,
 } from '!/lib/validators'
@@ -166,6 +170,100 @@ async function proxyUsers(
   }
   // 后端成功体即 { ok: true, users: string[] }。
   return check.body as { ok: true; users: string[] }
+}
+
+interface BackendUpdateResult {
+  ok: true
+  started: boolean
+  version: string
+  latest: boolean
+}
+
+// 程序自更新代理：后端立即回包（ started=true 表示后台已开工），
+// 下载替换耗时远超 10 秒代理超时，故只确认“已接受”，成败看后端日志与版本号变化.
+async function proxyUpdate(
+  target: NodeRow,
+  version?: string,
+): Promise<BackendUpdateResult> {
+  if (!target.baseUrl || !target.configKey) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'node not configured' })
+  }
+  const check = await fetchBackend(target.baseUrl, target.configKey, '/config/update', {
+    method: 'POST',
+    body: JSON.stringify({ version: version ?? '' }),
+  })
+  if (!check.ok) {
+    throw new TRPCError({
+      code:
+        check.status === 400 || check.status === 409
+          ? 'BAD_REQUEST'
+          : 'INTERNAL_SERVER_ERROR',
+      message: backendMessage(check.body, 'request failed'),
+    })
+  }
+  return check.body as BackendUpdateResult
+}
+
+interface UpdateSummary {
+  started: string[]
+  failed: string[]
+  skipped: string[]
+}
+
+// 广播自更新（尽力而为）：scopeNodeIds 为空推全部名下节点，否则只推所列
+// （显式选中的必须全部归属自己，否则直接拒绝）；离线/未配置的跳过
+// （等上线后手动补），在线节点即刻开工；永不抛错.
+async function broadcastUpdate(
+  db: Database,
+  userId: string,
+  version: string | undefined,
+  scopeNodeIds: string[] | null,
+): Promise<UpdateSummary> {
+  const owned = await db
+    .select({
+      id: node.id,
+      name: node.name,
+      baseUrl: node.baseUrl,
+      configKey: node.configKey,
+      lastSeenAt: node.lastSeenAt,
+    })
+    .from(node)
+    .where(eq(node.userId, userId))
+  const ownedSet = new Set(owned.map((n) => n.id))
+  if (scopeNodeIds && !scopeNodeIds.every((id) => ownedSet.has(id))) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'node not found' })
+  }
+  const inScope =
+    scopeNodeIds && scopeNodeIds.length > 0
+      ? owned.filter((n) => scopeNodeIds.includes(n.id))
+      : owned
+  const configured = inScope.filter(
+    (n): n is typeof n & { baseUrl: string; configKey: string } =>
+      !!n.baseUrl && !!n.configKey,
+  )
+  const skipped = configured
+    .filter((n) => !isOnline(n.lastSeenAt))
+    .map((n) => n.name)
+  const targets = configured.filter((n) => isOnline(n.lastSeenAt))
+  if (targets.length === 0) return { started: [], failed: [], skipped }
+  const results = await Promise.allSettled(
+    targets.map(async (t) => {
+      const check = await fetchBackend(t.baseUrl, t.configKey, '/config/update', {
+        method: 'POST',
+        body: JSON.stringify({ version: version ?? '' }),
+      })
+      if (!check.ok) throw new Error(backendMessage(check.body, 'request failed'))
+      return t.name
+    }),
+  )
+  const started: string[] = []
+  const failed: string[] = []
+  results.forEach((r, i) => {
+    const name = targets[i]?.name ?? ''
+    if (r.status === 'fulfilled') started.push(name)
+    else failed.push(name)
+  })
+  return { started, failed, skipped }
 }
 
 // 增删节点用户时广播推送到范围内已配置节点（尽力而为）：
@@ -453,6 +551,57 @@ export const nodesRouter = router({
     if (!target) notFound()
     return proxyUsers('remove', target, input.uuids)
   }),
+
+  // 单节点程序自更新：version 为空跟最新版，否则按 tag 精确更新；
+  // 后端接受即回（下载替换耗时远超代理超时），started=true 仅表示已开工.
+  updateBackend: authedProcedure
+    .input(updateBackendInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const target = await getOwnedNode(ctx.db, input.id, ctx.session.user.id)
+      if (!target) notFound()
+      return proxyUpdate(target, input.version)
+    }),
+
+  // 全部在线节点广播自更新：离线/未配置的跳过（等上线后手动补）.
+  updateAllBackends: authedProcedure
+    .input(updateAllBackendsInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return broadcastUpdate(ctx.db, ctx.session.user.id, input.version, null)
+    }),
+
+  // 选中子集广播自更新：version 为空跟最新版.
+  updateBackends: authedProcedure
+    .input(updateBackendsInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return broadcastUpdate(
+        ctx.db,
+        ctx.session.user.id,
+        input.version,
+        [...new Set(input.ids)],
+      )
+    }),
+
+  // 节点批量删除：逐个验归属后删（关联行显式清理，与单删语义一致）.
+  removeNodes: authedProcedure
+    .input(removeNodesInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const ids = [...new Set(input.ids)]
+      const owned = await db
+        .select({ id: node.id })
+        .from(node)
+        .where(eq(node.userId, me))
+      const ownedSet = new Set(owned.map((n) => n.id))
+      if (!ids.every((id) => ownedSet.has(id))) notFound()
+      await Promise.all(
+        ids.map(async (id) => {
+          await db.delete(nodeUserNode).where(eq(nodeUserNode.nodeId, id))
+          await db.delete(node).where(eq(node.id, id))
+        }),
+      )
+      return { ok: true as const, deleted: ids.length }
+    }),
 
   // 节点订阅用户（归属当前用户）：创建时服务端签发 UUID token，
   // 可限定多个节点（空即全部节点）；落库后广播推送到范围内已配置节点；

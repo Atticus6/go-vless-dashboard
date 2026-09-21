@@ -67,6 +67,25 @@ export const reorderNodesInputSchema = z.object({
   ids: z.array(nodeIdSchema).max(100),
 })
 
+// 节点批量删除：子集即可（显式选中的才删），router 内逐个验归属.
+export const removeNodesInputSchema = z.object({
+  ids: z.array(nodeIdSchema).min(1).max(100),
+})
+
+// 后端程序自更新：version 为空即跟最新版，否则按 tag 精确更新（如 v1.2.3）.
+export const updateVersionSchema = z
+  .string('invalid version')
+  .trim()
+  .max(32, 'invalid version')
+  .regex(/^v[\w.-]+$/, 'invalid version (want v1.2.3)')
+  .optional()
+
+// 选中子集广播自更新：version 为空跟最新版.
+export const updateBackendsInputSchema = z.object({
+  ids: z.array(nodeIdSchema).min(1).max(100),
+  version: updateVersionSchema,
+})
+
 export const updateNodeInputSchema = z.object({
   id: nodeIdSchema,
   name: nodeNameSchema.optional(),
@@ -77,6 +96,15 @@ export const updateNodeInputSchema = z.object({
 export const usersInputSchema = z.object({
   id: nodeIdSchema,
   uuids: uuidListSchema,
+})
+
+export const updateBackendInputSchema = z.object({
+  id: nodeIdSchema,
+  version: updateVersionSchema,
+})
+
+export const updateAllBackendsInputSchema = z.object({
+  version: updateVersionSchema,
 })
 
 // 节点订阅用户：按名称创建（可限定多个节点，空即全部节点），token 服务端签发；
@@ -153,6 +181,8 @@ export const backendStatusSchema = z.object({
       downBytes: z.number().optional(),
     }),
   ),
+  // 后端程序版本（tag，如 v1.2.3；本地构建为 dev）：老版本后端没有该字段.
+  version: z.string().optional(),
   buildTime: z.string(),
   binarySize: z.string(),
   memory: z.object({
