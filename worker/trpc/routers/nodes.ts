@@ -1,6 +1,12 @@
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
-import { node, nodeUser, nodeUserNode, type NodeRow } from '!/db/app-schema'
+import { and, count, desc, eq, gte, lte } from 'drizzle-orm'
+import {
+  node,
+  nodeUser,
+  nodeUserNode,
+  trafficRecord,
+  type NodeRow,
+} from '!/db/app-schema'
 import type { Database } from '!/db/index'
 import { generateId } from '!/lib/utils'
 import {
@@ -11,6 +17,7 @@ import {
   nodeUserEnsureInputSchema,
   nodeUserRemoveInputSchema,
   nodeUserScopeInputSchema,
+  trafficListInputSchema,
   updateNodeInputSchema,
   usersInputSchema,
 } from '!/lib/validators'
@@ -628,5 +635,96 @@ export const nodesRouter = router({
       }
       await proxyUsers('add', target, [record.token])
       return { ok: true as const }
+    }),
+
+  // 流量记录查询（归属当前用户）：按节点 / 节点用户 / 时间范围过滤，
+  // 时间倒序 + 分页；nodeUser 已删除的行 nodeUserName 为 null 照常返回.
+  // 过滤 id 先做归属校验（跨用户 id 穿透直接 404），再叠加 userId 兜底条件，
+  // 双保险：即使过滤缺失也只能看到名下节点的记录.
+  trafficList: authedProcedure
+    .input(trafficListInputSchema)
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      // 节点过滤必须归属自己，否则 404（与其它节点接口语义一致）.
+      if (input.nodeId) {
+        const target = await getOwnedNode(db, input.nodeId, me)
+        if (!target) notFound()
+      }
+      // 用户过滤同样必须归属自己.
+      if (input.nodeUserId) {
+        const rows = await db
+          .select({ id: nodeUser.id })
+          .from(nodeUser)
+          .where(
+            and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
+          )
+          .limit(1)
+        if (!rows[0]) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'node user not found',
+          })
+        }
+      }
+      const limit = input.limit ?? 50
+      const offset = input.offset ?? 0
+      // 条件动态叠加：userId 恒为第一条件（归属兜底），其余按传入组装；
+      // 时间字符串已在 schema 层校验为 ISO，这里直接转 Date.
+      const conds = [eq(node.userId, me)]
+      if (input.nodeId) conds.push(eq(trafficRecord.nodeId, input.nodeId))
+      if (input.nodeUserId) {
+        conds.push(eq(trafficRecord.nodeUserId, input.nodeUserId))
+      }
+      if (input.from) {
+        conds.push(gte(trafficRecord.recordedAt, new Date(input.from)))
+      }
+      if (input.to) {
+        conds.push(lte(trafficRecord.recordedAt, new Date(input.to)))
+      }
+      const where = and(...conds)
+      // 联表：node 内连接（记录 nodeId 必填，孤儿行不存在）；
+      // nodeUser 左连接（上报时未映射或用户已删的行保留，名字为 null）.
+      const joinNode = () =>
+        db
+          .select({
+            id: trafficRecord.id,
+            nodeId: trafficRecord.nodeId,
+            nodeName: node.name,
+            nodeUserId: trafficRecord.nodeUserId,
+            nodeUserName: nodeUser.name,
+            upBytes: trafficRecord.upBytes,
+            downBytes: trafficRecord.downBytes,
+            recordedAt: trafficRecord.recordedAt,
+          })
+          .from(trafficRecord)
+          .innerJoin(node, eq(trafficRecord.nodeId, node.id))
+          .leftJoin(nodeUser, eq(trafficRecord.nodeUserId, nodeUser.id))
+      // 总数与分页一次并行查出：总数供前端算页数，分页按记录时间倒序.
+      const [totalRows, rows] = await Promise.all([
+        db
+          .select({ value: count() })
+          .from(trafficRecord)
+          .innerJoin(node, eq(trafficRecord.nodeId, node.id))
+          .where(where),
+        joinNode()
+          .where(where)
+          .orderBy(desc(trafficRecord.recordedAt))
+          .limit(limit)
+          .offset(offset),
+      ])
+      return {
+        records: rows.map((r) => ({
+          id: r.id,
+          nodeId: r.nodeId,
+          nodeName: r.nodeName,
+          nodeUserId: r.nodeUserId,
+          nodeUserName: r.nodeUserName,
+          upBytes: r.upBytes,
+          downBytes: r.downBytes,
+          recordedAt: r.recordedAt ? toISO(r.recordedAt) : null,
+        })),
+        total: totalRows[0]?.value ?? 0,
+      }
     }),
 })

@@ -22,7 +22,8 @@ export function isOnline(
 }
 
 // 定长比较，key 长度不同直接失败（不泄露长度之外的信息）.
-function safeEqual(a: string, b: string): boolean {
+// traffic 上报接口复用同一鉴权语义.
+export function safeEqual(a: string, b: string): boolean {
   const enc = new TextEncoder()
   const ab = enc.encode(a)
   const bb = enc.encode(b)

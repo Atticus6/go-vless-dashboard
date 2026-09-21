@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2e41107d-ccc5-4333-ba53-9d2e2cf29f34",
-  "prevId": "2bf06186-d99f-445e-8cc0-d9416e5ad138",
+  "id": "64102e97-202e-45e2-a439-26fef00167b9",
+  "prevId": "983168c6-9af7-42cc-b1ed-a160a3577438",
   "tables": {
     "account": {
       "name": "account",
@@ -262,6 +262,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "config": {
+          "name": "config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'{}'"
         },
         "created_at": {
           "name": "created_at",
@@ -592,6 +600,105 @@
           "name": "node_user_node_node_user_id_node_id_pk"
         }
       },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "traffic_record": {
+      "name": "traffic_record",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "node_user_id": {
+          "name": "node_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "up_bytes": {
+          "name": "up_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "down_bytes": {
+          "name": "down_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "traffic_record_node_time_idx": {
+          "name": "traffic_record_node_time_idx",
+          "columns": [
+            "node_id",
+            "recorded_at"
+          ],
+          "isUnique": false
+        },
+        "traffic_record_user_time_idx": {
+          "name": "traffic_record_user_time_idx",
+          "columns": [
+            "node_user_id",
+            "recorded_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "traffic_record_node_id_node_id_fk": {
+          "name": "traffic_record_node_id_node_id_fk",
+          "tableFrom": "traffic_record",
+          "tableTo": "node",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "traffic_record_node_user_id_node_user_id_fk": {
+          "name": "traffic_record_node_user_id_node_user_id_fk",
+          "tableFrom": "traffic_record",
+          "tableTo": "node_user",
+          "columnsFrom": [
+            "node_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

@@ -940,6 +940,7 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
           <>
             <Select
               value={nodeUserId}
+              items={nodeUsers.map((u) => ({ value: u.id, label: u.name }))}
               onValueChange={(value) => setNodeUserId(value ?? '')}
             >
               <SelectTrigger id="vless-user" className="w-full">

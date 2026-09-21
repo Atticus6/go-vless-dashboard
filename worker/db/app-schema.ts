@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  index,
   integer,
   primaryKey,
   sqliteTable,
@@ -85,3 +86,35 @@ export const nodeUserNode = sqliteTable(
 )
 
 export type NodeUserNodeRow = typeof nodeUserNode.$inferSelect
+
+// 流量记录：后端定时上报（POST /api/traffic/report）的用户流量快照。
+// 一次上报落多行（一用户一行），同用户随时间多行，用于画用量趋势。
+// nodeId 必填：归属隔离的锚点，查询一律先按所属用户收敛到名下节点。
+// nodeUserId 可空：上报只带 uuid(token)，反查不到对应节点用户时记空
+// （展示为“未关联用户”，不断流）；节点用户被删时关联行按外键连带清理。
+// up/down 存原始字节数（后端 /config 的 upBytes/downBytes），方便求和排序；
+// recordedAt 落库时刻（库默认 now），同一批次多行时间戳一致。
+// 索引：查询页按（节点，时间）与（用户，时间）倒序分页，两组复合索引覆盖.
+export const trafficRecord = sqliteTable(
+  'traffic_record',
+  {
+    id: text('id').primaryKey(),
+    nodeId: text('node_id')
+      .notNull()
+      .references(() => node.id, { onDelete: 'cascade' }),
+    nodeUserId: text('node_user_id').references(() => nodeUser.id, {
+      onDelete: 'cascade',
+    }),
+    upBytes: integer('up_bytes').notNull().default(0),
+    downBytes: integer('down_bytes').notNull().default(0),
+    recordedAt: integer('recorded_at', { mode: 'timestamp_ms' })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (t) => [
+    index('traffic_record_node_time_idx').on(t.nodeId, t.recordedAt),
+    index('traffic_record_user_time_idx').on(t.nodeUserId, t.recordedAt),
+  ],
+)
+
+export type TrafficRecordRow = typeof trafficRecord.$inferSelect

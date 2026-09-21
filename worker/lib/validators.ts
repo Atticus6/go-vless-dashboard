@@ -135,7 +135,12 @@ export const backendStatusSchema = z.object({
   egressIPv6: z.string(),
   users: z.record(
     z.string(),
-    z.object({ up: z.string(), down: z.string() }),
+    z.object({
+      up: z.string(),
+      down: z.string(),
+      upBytes: z.number().optional(),
+      downBytes: z.number().optional(),
+    }),
   ),
   buildTime: z.string(),
   binarySize: z.string(),
@@ -159,6 +164,36 @@ export const subTokenParamSchema = z.object({
 
 export const subQueryInputSchema = subQuerySchema.extend({
   format: subFormatSchema.optional(),
+})
+
+// 流量记录查询：全部可选过滤（节点 / 节点用户 / 时间范围）+ 分页.
+// 时间走 ISO 字符串（tRPC 走 JSON，Date 会变字符串，索性显式收字符串），
+// router 内转 Date；归属校验在 router 做（过滤 id 必须属于当前用户）。
+// limit 上限 200，默认 50，与查询页 PAGE_SIZE 对齐.
+export const trafficListInputSchema = z.object({
+  nodeId: nodeIdSchema.optional(),
+  nodeUserId: nodeIdSchema.optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).optional(),
+})
+
+// 后端流量上报请求体（公开接口，靠节点 id + key 鉴权）：
+// users 以 uuid(token) 标识用户——后端只认识 token，不认识 dashboard 节点用户 id；
+// dashboard 按 token 反查 node_user，查不到的 nodeUserId 记空（查询页显示未关联）。
+// 单次最多 500 条（约束请求体大小，节点用户量级下足够）；
+// 字节数必须是非负整数（与 D1 integer 列对应，超大值按 JSON number 精度处理）.
+export const trafficReportUserSchema = z.object({
+  uuid: z.uuid({ error: 'invalid uuid' }),
+  upBytes: z.number({ error: 'invalid upBytes' }).int().nonnegative(),
+  downBytes: z.number({ error: 'invalid downBytes' }).int().nonnegative(),
+})
+
+export const trafficReportBodySchema = z.object({
+  id: nodeIdSchema,
+  key: configKeySchema,
+  users: z.array(trafficReportUserSchema).max(500),
 })
 
 // 后端反向注册请求体（公开接口，靠 id + key 鉴权）.

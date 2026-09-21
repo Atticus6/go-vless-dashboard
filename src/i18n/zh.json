@@ -45,6 +45,7 @@
   "menu": {
     "nodes": "节点",
     "nodeUsers": "节点用户",
+    "traffic": "流量记录",
     "notify": "通知",
     "config": "配置",
     "settings": "设置"
@@ -193,5 +194,25 @@
     "nodeInfoTunnel": "隧道",
     "nodeInfoTunnelOff": "关闭",
     "nodeInfoNoUsers": "暂无用户"
+  },
+  "traffic": {
+    "desc": "后端用户流量的周期快照（按记录时间倒序）。",
+    "filterTitle": "筛选",
+    "filterDesc": "按节点、节点用户与时间范围过滤，改筛选自动回到第一页。",
+    "node": "节点",
+    "user": "用户",
+    "all": "全部",
+    "range": "日期范围",
+    "pickRange": "选择日期范围",
+    "clearRange": "清除日期范围",
+    "time": "记录时间",
+    "up": "上行",
+    "down": "下行",
+    "total": "合计",
+    "empty": "暂无流量记录",
+    "unlinked": "未关联用户",
+    "count": "共 {{count}} 条",
+    "prev": "上一页",
+    "next": "下一页"
   }
 }

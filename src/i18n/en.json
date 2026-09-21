@@ -45,6 +45,7 @@
   "menu": {
     "nodes": "Nodes",
     "nodeUsers": "Node users",
+    "traffic": "Traffic",
     "notify": "Notifications",
     "config": "Config",
     "settings": "Settings"
@@ -193,5 +194,25 @@
     "nodeInfoTunnel": "Tunnel",
     "nodeInfoTunnelOff": "Off",
     "nodeInfoNoUsers": "No users"
+  },
+  "traffic": {
+    "desc": "Periodic snapshots of backend user traffic (newest first).",
+    "filterTitle": "Filters",
+    "filterDesc": "Filter by node, node user and time range; changing filters resets to the first page.",
+    "node": "Node",
+    "user": "User",
+    "all": "All",
+    "range": "Date range",
+    "pickRange": "Pick a date range",
+    "clearRange": "Clear date range",
+    "time": "Recorded at",
+    "up": "Up",
+    "down": "Down",
+    "total": "Total",
+    "empty": "No traffic records yet",
+    "unlinked": "Unlinked",
+    "count": "{{count}} record(s)",
+    "prev": "Prev",
+    "next": "Next"
   }
 }

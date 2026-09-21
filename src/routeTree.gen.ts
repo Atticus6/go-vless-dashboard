@@ -17,6 +17,7 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardConfigRouteImport } from './routes/dashboard/config'
 import { Route as DashboardNodeUsersRouteImport } from './routes/dashboard/node-users'
 import { Route as DashboardNodesRouteImport } from './routes/dashboard/nodes'
+import { Route as DashboardTrafficRouteImport } from './routes/dashboard/traffic'
 import { Route as DashboardSettingsPathRouteImport } from './routes/dashboard/settings/$path'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const DashboardNodesRoute = DashboardNodesRouteImport.update({
   path: '/nodes',
   getParentRoute: () => DashboardRouteRoute,
 } as any)
+const DashboardTrafficRoute = DashboardTrafficRouteImport.update({
+  id: '/traffic',
+  path: '/traffic',
+  getParentRoute: () => DashboardRouteRoute,
+} as any)
 const DashboardSettingsPathRoute = DashboardSettingsPathRouteImport.update({
   id: '/settings/$path',
   path: '/settings/$path',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
+  '/dashboard/traffic': typeof DashboardTrafficRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
 }
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
+  '/dashboard/traffic': typeof DashboardTrafficRoute
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
 }
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard/node-users': typeof DashboardNodeUsersRoute
   '/dashboard/nodes': typeof DashboardNodesRoute
+  '/dashboard/traffic': typeof DashboardTrafficRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/settings/$path': typeof DashboardSettingsPathRoute
 }
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/dashboard/config'
     | '/dashboard/node-users'
     | '/dashboard/nodes'
+    | '/dashboard/traffic'
     | '/dashboard/'
     | '/dashboard/settings/$path'
   fileRoutesByTo: FileRoutesByTo
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/dashboard/config'
     | '/dashboard/node-users'
     | '/dashboard/nodes'
+    | '/dashboard/traffic'
     | '/dashboard'
     | '/dashboard/settings/$path'
   id:
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/dashboard/config'
     | '/dashboard/node-users'
     | '/dashboard/nodes'
+    | '/dashboard/traffic'
     | '/dashboard/'
     | '/dashboard/settings/$path'
   fileRoutesById: FileRoutesById
@@ -198,6 +210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardNodesRouteImport
       parentRoute: typeof DashboardRouteRoute
     }
+    '/dashboard/traffic': {
+      id: '/dashboard/traffic'
+      path: '/traffic'
+      fullPath: '/dashboard/traffic'
+      preLoaderRoute: typeof DashboardTrafficRouteImport
+      parentRoute: typeof DashboardRouteRoute
+    }
     '/dashboard/settings/$path': {
       id: '/dashboard/settings/$path'
       path: '/settings/$path'
@@ -212,6 +231,7 @@ interface DashboardRouteRouteChildren {
   DashboardConfigRoute: typeof DashboardConfigRoute
   DashboardNodeUsersRoute: typeof DashboardNodeUsersRoute
   DashboardNodesRoute: typeof DashboardNodesRoute
+  DashboardTrafficRoute: typeof DashboardTrafficRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DashboardSettingsPathRoute: typeof DashboardSettingsPathRoute
 }
@@ -220,6 +240,7 @@ const DashboardRouteRouteChildren: DashboardRouteRouteChildren = {
   DashboardConfigRoute: DashboardConfigRoute,
   DashboardNodeUsersRoute: DashboardNodeUsersRoute,
   DashboardNodesRoute: DashboardNodesRoute,
+  DashboardTrafficRoute: DashboardTrafficRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DashboardSettingsPathRoute: DashboardSettingsPathRoute,
 }

@@ -85,6 +85,13 @@
       "when": 1789887405048,
       "tag": "0011_user-config",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789954333880,
+      "tag": "0012_traffic-records",
+      "breakpoints": true
     }
   ]
 }

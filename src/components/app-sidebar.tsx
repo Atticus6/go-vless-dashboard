@@ -1,5 +1,11 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Server, Settings, SlidersHorizontal, Users } from 'lucide-react'
+import {
+  Activity,
+  Server,
+  Settings,
+  SlidersHorizontal,
+  Users,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { UserButton } from '@/components/auth/user/user-button'
 import {
@@ -15,6 +21,7 @@ import {
 const menuKeys = [
   { to: '/dashboard/nodes', label: 'menu.nodes', icon: Server },
   { to: '/dashboard/node-users', label: 'menu.nodeUsers', icon: Users },
+  { to: '/dashboard/traffic', label: 'menu.traffic', icon: Activity },
   { to: '/dashboard/config', label: 'menu.config', icon: SlidersHorizontal },
   {
     to: '/dashboard/settings/$path',
