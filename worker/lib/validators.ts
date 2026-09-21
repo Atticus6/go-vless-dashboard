@@ -62,6 +62,11 @@ export const nodeIdInputSchema = z.object({
   id: nodeIdSchema,
 })
 
+// 节点拖拽排序：数组即新顺序（首位 sort_order=0），router 内校验全量一致.
+export const reorderNodesInputSchema = z.object({
+  ids: z.array(nodeIdSchema).max(100),
+})
+
 export const updateNodeInputSchema = z.object({
   id: nodeIdSchema,
   name: nodeNameSchema.optional(),
@@ -83,6 +88,12 @@ export const nodeUserCreateInputSchema = z.object({
 
 export const nodeUserRemoveInputSchema = z.object({
   nodeUserId: nodeIdSchema,
+})
+
+// 节点用户改名：名称规则与创建一致（1-64 字符）.
+export const nodeUserRenameInputSchema = z.object({
+  nodeUserId: nodeIdSchema,
+  name: nodeNameSchema,
 })
 
 // 节点用户可用范围更新：空数组 = 全部节点，否则只用于所列节点.

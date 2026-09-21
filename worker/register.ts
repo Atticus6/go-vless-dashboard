@@ -55,17 +55,28 @@ const registerApp = new Hono<{ Bindings: Env }>().post(
     if (reportedTunnel) candidates.push(reportedTunnel)
     // 上报原值每次落库；baseUrl 每次注册都用最新上报地址刷新：
     // urls 按序优先，其次隧道地址（最不可靠，垫底），都没上报则保留原值.
+    // 国家代码取自请求边缘信息（cf.country，ISO alpha-2）：
+    // 边缘未注入（如本地开发）则记空，不保留旧值.
+    const cf = c.req.raw as Request & {
+      cf?: { country?: unknown }
+    }
+    const countryCode =
+      typeof cf.cf?.country === 'string' && cf.cf.country
+        ? cf.cf.country
+        : null
     const patch: {
       lastSeenAt: Date
       backendVersion: string | null
       reportedUrls: string
       reportedTunnelUrl: string | null
+      countryCode: string | null
       baseUrl?: string | null
     } = {
       lastSeenAt: new Date(),
       backendVersion: version ?? target.backendVersion,
       reportedUrls: JSON.stringify(reportedUrls),
       reportedTunnelUrl: reportedTunnel,
+      countryCode,
     }
     if (candidates.length > 0 && candidates[0]) {
       patch.baseUrl = candidates[0]

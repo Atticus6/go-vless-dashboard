@@ -1,8 +1,27 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   Activity,
   ChevronDown,
   Copy,
+  GripVertical,
   Pencil,
   QrCode,
   Server,
@@ -12,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { formatNodeName } from '@/lib/country'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -115,6 +135,48 @@ function NodesPage() {
   const createNode = trpc.nodes.create.useMutation({
     onSuccess: () => void utils.nodes.invalidate(),
   })
+  // 拖拽传感器：指针拖动手柄，键盘方向键移动（无障碍）.
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+  // 排序落库：乐观更新先排好，失败回滚并提示（多端并发下旧顺序会被拒）.
+  const reorderNodes = trpc.nodes.reorder.useMutation({
+    onMutate: async (input) => {
+      await utils.nodes.list.cancel()
+      const prev = utils.nodes.list.getData()
+      utils.nodes.list.setData(undefined, (old) => {
+        if (!old) return old
+        const byId = new Map(old.nodes.map((n) => [n.id, n] as const))
+        return {
+          ...old,
+          nodes: input.ids.flatMap((id) => {
+            const item = byId.get(id)
+            return item ? [item] : []
+          }),
+        }
+      })
+      return { prev }
+    },
+    onError: (err, _input, context) => {
+      if (context?.prev) utils.nodes.list.setData(undefined, context.prev)
+      toast.error(err instanceof Error ? err.message : 'failed')
+    },
+    onSettled: () => void utils.nodes.list.invalidate(),
+  })
+
+  // 拖拽结束：按新位置重排后落库（原地释放不处理）.
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (over === null || active.id === over.id) return
+    const ids = nodes.map((n) => n.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    void reorderNodes.mutateAsync({ ids: arrayMove(ids, from, to) })
+  }
 
   function open(kind: NodeDialogKind, item: NodeItem) {
     setActive({ kind, item })
@@ -156,6 +218,9 @@ function NodesPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10">
+                    <span className="sr-only">{t('nodes.sort')}</span>
+                  </TableHead>
                   <TableHead>{t('nodes.name')}</TableHead>
                   <TableHead className="w-44">{t('nodes.status')}</TableHead>
                   <TableHead className="w-32 text-right">
@@ -164,92 +229,26 @@ function NodesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {nodes.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                          <Server className="size-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <span className="truncate font-medium">
-                            {item.name}
-                          </span>
-                          <p className="mt-0.5 max-w-70 truncate font-mono text-xs text-muted-foreground">
-                            {item.baseUrl ?? t('nodes.notConfigured')}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {item.online ? (
-                        <Badge variant="outline" className="gap-1.5">
-                          <span className="size-1.5 rounded-full bg-emerald-500" />
-                          {t('nodes.online')}
-                        </Badge>
-                      ) : item.lastSeenAt ? (
-                        <Badge
-                          variant="outline"
-                          className="text-muted-foreground"
-                        >
-                          {t('nodes.offline')}
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-muted-foreground"
-                        >
-                          {item.baseUrl ? '-' : t('nodes.notConfigured')}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button variant="outline" size="sm">
-                              {t('nodes.actions')}
-                              <ChevronDown />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => open('test', item)}
-                          >
-                            <Activity className="text-muted-foreground" />
-                            {t('nodes.connectivity')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => open('install', item)}
-                          >
-                            <Terminal className="text-muted-foreground" />
-                            {t('nodes.installCommands')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => open('copyVless', item)}
-                          >
-                            <Copy className="text-muted-foreground" />
-                            {t('nodes.copySubscription')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => open('edit', item)}
-                          >
-                            <Pencil className="text-muted-foreground" />
-                            {t('nodes.edit')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => open('delete', item)}
-                          >
-                            <Trash2 />
-                            {t('nodes.delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {/* restrictToVerticalAxis：只允许上下拖，禁止左右跑. */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  modifiers={[restrictToVerticalAxis]}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={nodes.map((n) => n.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {nodes.map((item) => (
+                      <NodeTableRow
+                        key={item.id}
+                        item={item}
+                        onOpen={open}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               </TableBody>
             </Table>
           </CardContent>
@@ -287,6 +286,115 @@ function NodesPage() {
         onClose={() => close('delete')}
       />
     </section>
+  )
+}
+
+// 可排序的节点行：transform 做位移动画，拖拽手柄独占 listeners，
+// 行内按钮不受影响；拖拽中提升层级并半透明.
+function NodeTableRow({
+  item,
+  onOpen,
+}: {
+  item: NodeItem
+  onOpen: (kind: NodeDialogKind, item: NodeItem) => void
+}) {
+  const { t } = useTranslation()
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={isDragging ? 'relative z-10 opacity-80 shadow-lg' : undefined}
+    >
+      <TableCell>
+        <span
+          {...attributes}
+          {...listeners}
+          tabIndex={0}
+          title={t('nodes.sort')}
+          aria-label={t('nodes.sort')}
+          className="flex cursor-grab touch-none items-center text-muted-foreground outline-none focus-visible:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="size-4" />
+        </span>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <Server className="size-4" />
+          </span>
+                        <div className="min-w-0">
+                          <span className="truncate font-medium">
+                            {formatNodeName(item.name, item.countryCode)}
+                          </span>
+            <p className="mt-0.5 max-w-70 truncate font-mono text-xs text-muted-foreground">
+              {item.baseUrl ?? t('nodes.notConfigured')}
+            </p>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        {item.online ? (
+          <Badge variant="outline" className="gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            {t('nodes.online')}
+          </Badge>
+        ) : item.lastSeenAt ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            {t('nodes.offline')}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            {item.baseUrl ? '-' : t('nodes.notConfigured')}
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="outline" size="sm">
+                {t('nodes.actions')}
+                <ChevronDown />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onOpen('test', item)}>
+              <Activity className="text-muted-foreground" />
+              {t('nodes.connectivity')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onOpen('install', item)}>
+              <Terminal className="text-muted-foreground" />
+              {t('nodes.installCommands')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onOpen('copyVless', item)}>
+              <Copy className="text-muted-foreground" />
+              {t('nodes.copySubscription')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onOpen('edit', item)}>
+              <Pencil className="text-muted-foreground" />
+              {t('nodes.edit')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onOpen('delete', item)}
+            >
+              <Trash2 />
+              {t('nodes.delete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -378,7 +486,9 @@ function TestDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('nodes.connectivity')}</DialogTitle>
-          <DialogDescription>{item?.name ?? ''}</DialogDescription>
+          <DialogDescription>
+              {item ? formatNodeName(item.name, item.countryCode) : ''}
+            </DialogDescription>
         </DialogHeader>
         {item && <TestBody key={item.id} nodeId={item.id} />}
       </DialogContent>
@@ -826,7 +936,9 @@ function InstallDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('nodes.installCommands')}</DialogTitle>
-          <DialogDescription>{item?.name ?? ''}</DialogDescription>
+          <DialogDescription>
+              {item ? formatNodeName(item.name, item.countryCode) : ''}
+            </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
           <Button
@@ -878,7 +990,9 @@ function CopyVlessDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('nodes.copySubscription')}</DialogTitle>
-          <DialogDescription>{item?.name ?? ''}</DialogDescription>
+          <DialogDescription>
+              {item ? formatNodeName(item.name, item.countryCode) : ''}
+            </DialogDescription>
         </DialogHeader>
         {item && <CopyVlessBody key={item.id} item={item} />}
       </DialogContent>
@@ -993,9 +1107,10 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
                   host={host}
                   token={token}
                   defaultRemark={
+                    // 与订阅备注同格式：旗帜前缀 + 名，多地址缀序号.
                     effectiveHosts.length > 1
-                      ? `${item.name}-${index + 1}`
-                      : item.name
+                      ? `${formatNodeName(item.name, item.countryCode)}-${index + 1}`
+                      : formatNodeName(item.name, item.countryCode)
                   }
                   onShowQr={(link) => setQrTarget({ host, link })}
                 />

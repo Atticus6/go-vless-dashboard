@@ -25,13 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -48,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatNodeName } from '@/lib/country'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -168,7 +163,7 @@ function ScopePicker({
   idPrefix,
 }: {
   value: string[]
-  nodes: Array<{ id: string; name: string }>
+  nodes: Array<{ id: string; name: string; countryCode: string | null }>
   onChange: (ids: string[]) => void
   idPrefix: string
 }) {
@@ -176,7 +171,9 @@ function ScopePicker({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const all = value.length === 0
-  const names = new Map(nodes.map((n) => [n.id, n.name] as const))
+  const names = new Map(
+    nodes.map((n) => [n.id, formatNodeName(n.name, n.countryCode)] as const),
+  )
   const label = all
     ? t('nodes.scopeAll')
     : value.length === 1
@@ -254,8 +251,11 @@ function ScopePicker({
             )}
             <Separator className="my-1" />
             {filtered.map((n) =>
-              row(n.id, value.includes(n.id), n.name, (checked) =>
-                toggle(n.id, checked),
+              row(
+                n.id,
+                value.includes(n.id),
+                formatNodeName(n.name, n.countryCode),
+                (checked) => toggle(n.id, checked),
               ),
             )}
             {filtered.length === 0 && (
@@ -279,6 +279,9 @@ function NodeUsersPage() {
   const [editScopeNodeIds, setEditScopeNodeIds] = useState<string[]>([])
   const [subTarget, setSubTarget] = useState<NodeUserItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<NodeUserItem | null>(null)
+  const [renameTarget, setRenameTarget] = useState<NodeUserItem | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
 
   const utils = trpc.useUtils()
   const listQuery = trpc.nodes.nodeUserList.useQuery()
@@ -300,6 +303,9 @@ function NodeUsersPage() {
   const scopeUser = trpc.nodes.nodeUserScope.useMutation({
     onSuccess: invalidate,
   })
+  const renameUser = trpc.nodes.nodeUserRename.useMutation({
+    onSuccess: invalidate,
+  })
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
@@ -311,6 +317,7 @@ function NodeUsersPage() {
       })
       setName('')
       setScopeNodeIds([])
+      setAddOpen(false)
       toast.success(
         `${t('nodes.nodeUserAdded')}${formatSync(res.sync, t)}`,
       )
@@ -346,6 +353,25 @@ function NodeUsersPage() {
     setEditScopeNodeIds([...target.nodeIds])
   }
 
+  function openRenameEditor(target: NodeUserItem) {
+    setRenameTarget(target)
+    setRenameName(target.name)
+  }
+
+  async function handleRenameSave() {
+    if (!renameTarget || renameName.trim() === '') return
+    try {
+      await renameUser.mutateAsync({
+        nodeUserId: renameTarget.id,
+        name: renameName.trim(),
+      })
+      toast.success(t('nodes.nodeUserRenamed'))
+      setRenameTarget(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'failed')
+    }
+  }
+
   async function handleScopeSave() {
     if (!scopeTarget) return
     try {
@@ -364,13 +390,16 @@ function NodeUsersPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {t('menu.nodeUsers')}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t('nodes.nodeUsersDesc')}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t('menu.nodeUsers')}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t('nodes.nodeUsersDesc')}
+          </p>
+        </div>
+        <Button onClick={() => setAddOpen(true)}>{t('nodes.nodeUserAdd')}</Button>
       </div>
 
       {loading && (
@@ -405,7 +434,16 @@ function NodeUsersPage() {
                 )}
                 {users.map((u) => (
                   <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        title={t('nodes.nodeUserRename')}
+                        onClick={() => openRenameEditor(u)}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        {u.name}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-mono text-xs break-all">
                       {u.token}
                     </TableCell>
@@ -463,33 +501,32 @@ function NodeUsersPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('nodes.nodeUserAdd')}</CardTitle>
-          <CardDescription>{t('nodes.nodeUsersDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddOpen(false)
+            setName('')
+            setScopeNodeIds([])
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('nodes.nodeUserAdd')}</DialogTitle>
+            <DialogDescription>{t('nodes.nodeUsersDesc')}</DialogDescription>
+          </DialogHeader>
           <form className="space-y-3" onSubmit={handleCreate}>
-            <div className="flex gap-2">
-              <div className="grid flex-1 gap-2">
-                <Label htmlFor="node-user-name" className="sr-only">
-                  {t('nodes.name')}
-                </Label>
-                <Input
-                  id="node-user-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder={t('nodes.nodeUserNamePlaceholder')}
-                  required
-                  maxLength={64}
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={createUser.isPending || name.trim() === ''}
-              >
-                {t('nodes.nodeUserAdd')}
-              </Button>
+            <div className="grid gap-2">
+              <Label htmlFor="node-user-name">{t('nodes.name')}</Label>
+              <Input
+                id="node-user-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={t('nodes.nodeUserNamePlaceholder')}
+                required
+                maxLength={64}
+              />
             </div>
             <ScopePicker
               value={scopeNodeIds}
@@ -497,9 +534,24 @@ function NodeUsersPage() {
               onChange={setScopeNodeIds}
               idPrefix="node-user-scope"
             />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddOpen(false)}
+              >
+                {t('nodes.cancel')}
+              </Button>
+              <Button
+                type="submit"
+                disabled={createUser.isPending || name.trim() === ''}
+              >
+                {t('nodes.nodeUserAdd')}
+              </Button>
+            </DialogFooter>
           </form>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={scopeTarget !== null}
@@ -528,6 +580,41 @@ function NodeUsersPage() {
             <Button
               disabled={scopeUser.isPending}
               onClick={() => void handleScopeSave()}
+            >
+              {t('nodes.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('nodes.nodeUserRename')}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="node-user-rename">{t('nodes.name')}</Label>
+            <Input
+              id="node-user-rename"
+              value={renameName}
+              onChange={(event) => setRenameName(event.target.value)}
+              placeholder={t('nodes.nodeUserNamePlaceholder')}
+              required
+              maxLength={64}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+              {t('nodes.cancel')}
+            </Button>
+            <Button
+              disabled={renameUser.isPending || renameName.trim() === ''}
+              onClick={() => void handleRenameSave()}
             >
               {t('nodes.save')}
             </Button>

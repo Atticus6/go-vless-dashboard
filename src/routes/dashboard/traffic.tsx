@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatNodeName } from '@/lib/country'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -233,7 +234,10 @@ function TrafficPage() {
                 value={nodeId || 'all'}
                 items={[
                   { value: 'all', label: t('traffic.all') },
-                  ...nodes.map((n) => ({ value: n.id, label: n.name })),
+                  ...nodes.map((n) => ({
+                    value: n.id,
+                    label: formatNodeName(n.name, n.countryCode),
+                  })),
                 ]}
                 onValueChange={(v) => {
                   setNodeId(v === 'all' ? '' : (v ?? ''))
@@ -247,7 +251,7 @@ function TrafficPage() {
                   <SelectItem value="all">{t('traffic.all')}</SelectItem>
                   {nodes.map((n) => (
                     <SelectItem key={n.id} value={n.id}>
-                      {n.name}
+                      {formatNodeName(n.name, n.countryCode)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -334,7 +338,9 @@ function TrafficPage() {
                         ? new Date(r.recordedAt).toLocaleString()
                         : '—'}
                     </TableCell>
-                    <TableCell className="font-medium">{r.nodeName}</TableCell>
+                    <TableCell className="font-medium">
+                      {formatNodeName(r.nodeName, r.nodeCountryCode)}
+                    </TableCell>
                     {/* 用户名为空 = 上报时未映射或用户已删，显示未关联. */}
                     <TableCell className="text-sm text-muted-foreground">
                       {r.nodeUserName ?? t('traffic.unlinked')}

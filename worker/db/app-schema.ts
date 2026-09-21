@@ -29,6 +29,12 @@ export const node = sqliteTable('node', {
   // 每次注册原样落库的上报地址：urls JSON 数组 + 隧道地址（可空）。
   reportedUrls: text('reported_urls'),
   reportedTunnelUrl: text('reported_tunnel_url'),
+  // 手动排序：默认 0，管理表格拖拽后按数组位置重写；
+  // list 与订阅输出按该字段升序（值相同按创建时间兜底）.
+  sortOrder: integer('sort_order').notNull().default(0),
+  // 节点所在国家代码（Cloudflare cf.country，ISO alpha-2，如 US）：
+  // 反向注册时从请求边缘信息提取，本地开发无边缘信息时记空.
+  countryCode: text('country_code'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .notNull(),

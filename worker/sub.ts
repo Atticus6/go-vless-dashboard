@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { node, nodeUser, nodeUserNode } from '!/db/app-schema'
 import { createDb } from '!/db/index'
 import {
@@ -35,15 +35,18 @@ const subApp = new Hono<{ Bindings: Env }>().get(
     const owner = owners[0]
     if (!owner) return c.text('unknown token', 404)
 
+    // 订阅内节点顺序与管理表格一致：手动排序优先，值相同按创建时间.
     const owned = await db
       .select({
         id: node.id,
         name: node.name,
         reportedUrls: node.reportedUrls,
         reportedTunnelUrl: node.reportedTunnelUrl,
+        countryCode: node.countryCode,
       })
       .from(node)
       .where(eq(node.userId, owner.userId))
+      .orderBy(asc(node.sortOrder), asc(node.createdAt))
     // 无关联行 = 全部节点；有关联行 = 仅所列节点.
     const myLinks = await db
       .select({ nodeId: nodeUserNode.nodeId })
@@ -62,6 +65,7 @@ const subApp = new Hono<{ Bindings: Env }>().get(
         name: n.name,
         reportedUrls: parseReportedUrls(n.reportedUrls),
         reportedTunnelUrl: n.reportedTunnelUrl,
+        countryCode: n.countryCode,
       })),
       token,
       params,

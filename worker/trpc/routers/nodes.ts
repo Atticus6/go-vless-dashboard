@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { and, count, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, lte } from 'drizzle-orm'
 import {
   node,
   nodeUser,
@@ -16,12 +16,15 @@ import {
   nodeUserCreateInputSchema,
   nodeUserEnsureInputSchema,
   nodeUserRemoveInputSchema,
+  nodeUserRenameInputSchema,
   nodeUserScopeInputSchema,
+  reorderNodesInputSchema,
   trafficListInputSchema,
   updateNodeInputSchema,
   usersInputSchema,
 } from '!/lib/validators'
 import { isOnline } from '!/register'
+import { countryFlag } from '!/lib/subscription'
 import { authedProcedure, router } from '!/trpc/trpc'
 
 // tRPC 契约唯一来源：前端经 AppRouter 全链路推导，禁止在 src 下手写重复接口。
@@ -244,9 +247,12 @@ export const nodesRouter = router({
         backendVersion: node.backendVersion,
         reportedUrls: node.reportedUrls,
         reportedTunnelUrl: node.reportedTunnelUrl,
+        countryCode: node.countryCode,
       })
       .from(node)
       .where(eq(node.userId, uid))
+      // 手动排序优先（拖拽写入），值相同按创建时间兜底.
+      .orderBy(asc(node.sortOrder), asc(node.createdAt))
     return {
       nodes: rows.map((row) => ({
         id: row.id,
@@ -258,6 +264,8 @@ export const nodesRouter = router({
         backendVersion: row.backendVersion,
         reportedUrls: parseReportedUrls(row.reportedUrls),
         reportedTunnelUrl: row.reportedTunnelUrl,
+        // 原始名 + 国家码分别返回，展示层按需拼旗帜（编辑框必须用原始名）.
+        countryCode: row.countryCode,
         online: isOnline(row.lastSeenAt),
       })),
     }
@@ -276,6 +284,10 @@ export const nodesRouter = router({
       backendVersion: null,
       reportedUrls: null,
       reportedTunnelUrl: null,
+      // 新节点排序默认 0（与老数据一致），同值按创建时间排.
+      sortOrder: 0,
+      // 国家代码未知（首次注册时由边缘信息写入）.
+      countryCode: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -322,6 +334,40 @@ export const nodesRouter = router({
     await db.delete(node).where(eq(node.id, input.id))
     return { ok: true as const }
   }),
+
+  // 拖拽排序：按数组位置重写 sort_order（首位 0，依次递增）。
+  // ids 必须恰好是名下全部节点（防多端并发下旧顺序覆盖新节点），否则直接拒绝.
+  reorder: authedProcedure
+    .input(reorderNodesInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const owned = await db
+        .select({ id: node.id })
+        .from(node)
+        .where(eq(node.userId, me))
+      const ownedSet = new Set(owned.map((n) => n.id))
+      const nextSet = new Set(input.ids)
+      if (
+        nextSet.size !== input.ids.length ||
+        nextSet.size !== ownedSet.size ||
+        ![...nextSet].every((id) => ownedSet.has(id))
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'stale node list, please retry',
+        })
+      }
+      await Promise.all(
+        input.ids.map((id, index) =>
+          db
+            .update(node)
+            .set({ sortOrder: index, updatedAt: new Date() })
+            .where(eq(node.id, id)),
+        ),
+      )
+      return { ok: true as const }
+    }),
 
   // 该节点的后端安装命令（含 服务端地址:节点id:config_key 三元组）。
   // 点击复制 = 明示查看 key；key 明文仅在此接口返回，其它接口永不返回。
@@ -423,10 +469,16 @@ export const nodesRouter = router({
       .from(nodeUser)
       .where(eq(nodeUser.userId, me))
     const owned = await ctx.db
-      .select({ id: node.id, name: node.name })
+      .select({ id: node.id, name: node.name, countryCode: node.countryCode })
       .from(node)
       .where(eq(node.userId, me))
-    const names = new Map(owned.map((n) => [n.id, n.name] as const))
+    // 可用范围展示名：名前拼旗帜（与订阅备注一致），无码不拼.
+    const names = new Map(
+      owned.map((n) => {
+        const flag = countryFlag(n.countryCode)
+        return [n.id, flag ? `${flag}${n.name}` : n.name] as const
+      }),
+    )
     const ownedIds = new Set(owned.map((n) => n.id))
     const linkRows =
       rows.length === 0
@@ -544,6 +596,32 @@ export const nodesRouter = router({
       await db.delete(nodeUserNode).where(eq(nodeUserNode.nodeUserId, record.id))
       await db.delete(nodeUser).where(eq(nodeUser.id, input.nodeUserId))
       return { ok: true as const, sync }
+    }),
+
+  // 节点用户改名：仅改名，不动 token 与可用范围，后端无需同步.
+  nodeUserRename: authedProcedure
+    .input(nodeUserRenameInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      const rows = await db
+        .select({ id: nodeUser.id })
+        .from(nodeUser)
+        .where(
+          and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)),
+        )
+        .limit(1)
+      if (!rows[0]) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'node user not found',
+        })
+      }
+      await db
+        .update(nodeUser)
+        .set({ name: input.name, updatedAt: new Date() })
+        .where(eq(nodeUser.id, input.nodeUserId))
+      return { ok: true as const }
     }),
 
   // 可用范围更新：换关联行（空即全部节点），并按增减 diff 推送——
@@ -691,6 +769,7 @@ export const nodesRouter = router({
             id: trafficRecord.id,
             nodeId: trafficRecord.nodeId,
             nodeName: node.name,
+            nodeCountryCode: node.countryCode,
             nodeUserId: trafficRecord.nodeUserId,
             nodeUserName: nodeUser.name,
             upBytes: trafficRecord.upBytes,
@@ -718,6 +797,7 @@ export const nodesRouter = router({
           id: r.id,
           nodeId: r.nodeId,
           nodeName: r.nodeName,
+          nodeCountryCode: r.nodeCountryCode,
           nodeUserId: r.nodeUserId,
           nodeUserName: r.nodeUserName,
           upBytes: r.upBytes,
