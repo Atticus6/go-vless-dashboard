@@ -480,6 +480,7 @@ function RegisterSyncInfo({ nodeId }: { nodeId: string }) {
     <>
       {data.register && <RegisterSyncDetail reg={data.register} />}
       <TLSCertDetail tls={data.tls} />
+      <NodeInfoDetail data={data} />
     </>
   )
 }
@@ -488,7 +489,8 @@ function RegisterSyncDetail({
   reg,
 }: {
   reg: NonNullable<BackendStatus['register']>
-}) {  const { t } = useTranslation()
+}) {
+  const { t } = useTranslation()
   const connected = reg.enabled && !reg.lastError && !!reg.lastSuccessAt
   const failed = reg.enabled && !!reg.lastError
 
@@ -520,7 +522,10 @@ function RegisterSyncDetail({
               <dt className="shrink-0 text-muted-foreground">
                 {t('nodes.regDashboardUrl')}
               </dt>
-              <dd className="min-w-0 flex-1 truncate font-mono">
+              <dd
+                className="min-w-0 flex-1 break-all font-mono"
+                title={reg.dashboardUrl}
+              >
                 {reg.dashboardUrl}
               </dd>
             </div>
@@ -530,7 +535,10 @@ function RegisterSyncDetail({
               <dt className="shrink-0 text-muted-foreground">
                 {t('nodes.regNodeId')}
               </dt>
-              <dd className="min-w-0 flex-1 truncate font-mono">
+              <dd
+                className="min-w-0 flex-1 break-all font-mono"
+                title={reg.nodeId}
+              >
                 {reg.nodeId}
               </dd>
             </div>
@@ -547,21 +555,29 @@ function RegisterSyncDetail({
           </div>
           <div className="flex gap-2">
             <dt className="shrink-0 text-muted-foreground">
-              {t('nodes.regNextSync', {
+              {t('nodes.regNextSyncLabel')}
+            </dt>
+            <dd className="flex-1">
+              {t('nodes.regNextSyncValue', {
                 count: Math.max(1, Math.ceil((reg.nextSyncInSec ?? 0) / 60)),
               })}
-            </dt>
+            </dd>
           </div>
           {reg.syncedUsers !== undefined && (
             <div className="flex gap-2">
               <dt className="shrink-0 text-muted-foreground">
-                {t('nodes.regSyncedUsers', { count: reg.syncedUsers })}
+                {t('nodes.regSyncedUsersLabel')}
               </dt>
-              <dd className="flex-1 text-muted-foreground">
-                {t('nodes.regLastChange', {
-                  added: reg.lastSyncAdded ?? 0,
-                  removed: reg.lastSyncRemoved ?? 0,
-                })}
+              <dd className="flex-1">
+                {t('nodes.regSyncedUsersValue', {
+                  count: reg.syncedUsers,
+                })}{' '}
+                <span className="text-muted-foreground">
+                  {t('nodes.regLastChange', {
+                    added: reg.lastSyncAdded ?? 0,
+                    removed: reg.lastSyncRemoved ?? 0,
+                  })}
+                </span>
               </dd>
             </div>
           )}
@@ -614,7 +630,10 @@ function TLSCertDetail({ tls }: { tls: BackendStatus['tls'] }) {
               <dt className="shrink-0 text-muted-foreground">
                 {t('nodes.tlsDomain')}
               </dt>
-              <dd className="min-w-0 flex-1 truncate font-mono">
+              <dd
+                className="min-w-0 flex-1 break-all font-mono"
+                title={tls.domain}
+              >
                 {tls.domain}
               </dd>
             </div>
@@ -632,16 +651,124 @@ function TLSCertDetail({ tls }: { tls: BackendStatus['tls'] }) {
           {tls.expiresAt && tls.daysLeft !== undefined && (
             <div className="flex gap-2">
               <dt className="shrink-0 text-muted-foreground">
-                {t('nodes.tlsDaysLeft', { count: tls.daysLeft })}
+                {t('nodes.tlsDaysLeftLabel')}
               </dt>
-              {(expired || expiring) && (
-                <dd className="flex-1 text-destructive">
-                  {expired ? t('nodes.tlsExpired') : t('nodes.tlsExpiring')}
-                </dd>
-              )}
+              <dd className="flex-1">
+                {t('nodes.tlsDaysLeftValue', { count: tls.daysLeft })}
+                {(expired || expiring) && (
+                  <span className="text-destructive">
+                    {' '}
+                    {expired ? t('nodes.tlsExpired') : t('nodes.tlsExpiring')}
+                  </span>
+                )}
+              </dd>
             </div>
           )}
         </dl>
+      )}
+    </div>
+  )
+}
+
+// 节点端 /config 的其余字段：可用地址、出口 IP、用户流量、运行状态。
+function NodeInfoDetail({ data }: { data: BackendStatus }) {
+  const { t } = useTranslation()
+  const userEntries = Object.entries(data.users ?? {})
+  const egress =
+    data.ipv6 && data.egressIPv6 && data.egressIPv6 !== 'unknown'
+      ? `${data.egressIPv4} / ${data.egressIPv6}`
+      : data.egressIPv4
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{t('nodes.nodeInfoTitle')}</span>
+        <Badge variant="outline" className="text-muted-foreground">
+          {t('nodes.nodeInfoUsers', { count: userEntries.length })}
+        </Badge>
+      </div>
+      <dl className="space-y-1 text-xs">
+        {data.urls.length > 0 && (
+          <div className="flex gap-2">
+            <dt className="shrink-0 text-muted-foreground">
+              {t('nodes.nodeInfoUrls')}
+            </dt>
+            <dd className="min-w-0 flex-1 break-all font-mono">
+              {data.urls.map((u) => (
+                <p key={u} title={u}>
+                  {u}
+                </p>
+              ))}
+            </dd>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoEgress')}
+          </dt>
+          <dd className="min-w-0 flex-1 break-all font-mono">{egress}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoUptime')}
+          </dt>
+          <dd className="flex-1">{data.uptime}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoMemory')}
+          </dt>
+          <dd
+            className="flex-1"
+            title={`alloc ${data.memory.alloc} / sys ${data.memory.sys}`}
+          >
+            {data.memory.rss}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoBuild')}
+          </dt>
+          <dd className="flex-1">
+            {data.binarySize} · {new Date(data.buildTime).toLocaleString()}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-muted-foreground">
+            {t('nodes.nodeInfoTunnel')}
+          </dt>
+          <dd className="min-w-0 flex-1 break-all font-mono">
+            {data.tunnel && data.tunnelURL ? (
+              <span title={data.tunnelURL}>{data.tunnelURL}</span>
+            ) : (
+              <span className="font-sans text-muted-foreground">
+                {t('nodes.nodeInfoTunnelOff')}
+              </span>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {userEntries.length > 0 ? (
+        <ul className="space-y-0.5 border-t pt-2 font-mono text-xs">
+          {userEntries.map(([uuid, traffic]) => (
+            <li
+              key={uuid}
+              className="flex items-baseline justify-between gap-2"
+              title={uuid}
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {uuid.slice(0, 8)}…
+              </span>
+              <span className="shrink-0 text-muted-foreground">
+                ↑{traffic.up} ↓{traffic.down}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="border-t pt-2 text-xs text-muted-foreground">
+          {t('nodes.nodeInfoNoUsers')}
+        </p>
       )}
     </div>
   )

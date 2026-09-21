@@ -136,8 +136,9 @@ export function addrHash5(host: string): string {
 }
 /** 范围内每个节点的全部上报地址逐个出一条链接：
  * urls 在前、隧道地址垫底，同节点内去重；无上报地址的节点跳过.
- * 备注格式：节点名-序号-地址hash5位（如 HK-1-a1b2c），序号为该节点内地址序号；
- * 全局重名（同名同地址）时缀序号保证唯一.
+ * 备注格式：单地址时直接用节点名（如 HK），多地址时节点名-序号-地址hash5位
+ * （如 HK-1-a1b2c），序号为该节点内地址序号；
+ * 全局重名时缀序号保证唯一.
  */
 export function buildSubEntries(
   nodes: SubNodeInput[],
@@ -155,10 +156,14 @@ export function buildSubEntries(
       ),
     ]
     hosts.forEach((host, index) => {
-      let remark = `${node.name}-${index + 1}-${addrHash5(host)}`
+      const base =
+        hosts.length === 1
+          ? node.name
+          : `${node.name}-${index + 1}-${addrHash5(host)}`
+      let remark = base
       let i = 2
       while (used.has(remark)) {
-        remark = `${node.name}-${index + 1}-${addrHash5(host)}-${i}`
+        remark = `${base}-${i}`
         i += 1
       }
       used.add(remark)

@@ -1,0 +1,12 @@
+# Workers 静态资源响应头（构建时原样拷贝到 dist/_headers，不会被当作资源 served）。
+# 默认全部回源校验；这里只给可安全强缓存的加长缓存。
+
+# Vite 构建产物（/assets/*，文件名自带 hash，内容变则文件名变）：一年强缓存
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# public/ 下的非指纹文件（无 hash，更新靠覆盖同名文件）：短缓存 1 天
+/favicon.svg
+  Cache-Control: public, max-age=86400
+/icons.svg
+  Cache-Control: public, max-age=86400

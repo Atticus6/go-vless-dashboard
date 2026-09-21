@@ -160,11 +160,13 @@ async function proxyUsers(
 
 // 增删节点用户时广播推送到范围内已配置节点（尽力而为）：
 // scopeNodeIds 为空（null 或空数组）推送全部名下节点，否则只推所列节点；
-// 在线节点即刻生效；离线/推送失败的节点下次反向注册拉取时自动对账.
-// 永不抛错，调用方落库成功后调用，失败只进 failed 名单.
+// 离线节点直接跳过（进 skipped 名单，不尝试推送）；推送失败的进 failed；
+// 在线推送成功的即刻生效；跳过/失败的节点下次反向注册拉取时自动对账.
+// 永不抛错，调用方落库成功后调用.
 interface PushSummary {
   synced: string[]
   failed: string[]
+  skipped: string[]
 }
 
 async function broadcastUserToken(
@@ -180,6 +182,7 @@ async function broadcastUserToken(
       name: node.name,
       baseUrl: node.baseUrl,
       configKey: node.configKey,
+      lastSeenAt: node.lastSeenAt,
     })
     .from(node)
     .where(eq(node.userId, userId))
@@ -187,11 +190,14 @@ async function broadcastUserToken(
     scopeNodeIds && scopeNodeIds.length > 0
       ? owned.filter((n) => scopeNodeIds.includes(n.id))
       : owned
-  const targets = inScope.filter(
+  const configured = inScope.filter(
     (n): n is typeof n & { baseUrl: string; configKey: string } =>
       !!n.baseUrl && !!n.configKey,
   )
-  if (targets.length === 0) return { synced: [], failed: [] }
+  // 不在线的直接跳过，不发请求（等下次反向注册对账）。
+  const skipped = configured.filter((n) => !isOnline(n.lastSeenAt)).map((n) => n.name)
+  const targets = configured.filter((n) => isOnline(n.lastSeenAt))
+  if (targets.length === 0) return { synced: [], failed: [], skipped }
   const results = await Promise.allSettled(
     targets.map(async (t) => {
       const check = await fetchBackend(
@@ -214,7 +220,7 @@ async function broadcastUserToken(
     if (r.status === 'fulfilled') synced.push(name)
     else failed.push(name)
   })
-  return { synced, failed }
+  return { synced, failed, skipped }
 }
 
 export const nodesRouter = router({
@@ -578,14 +584,15 @@ export const nodesRouter = router({
       const syncs = await Promise.all([
         added.length > 0
           ? broadcastUserToken(db, me, 'add', record.token, added)
-          : { synced: [], failed: [] },
+          : { synced: [], failed: [], skipped: [] },
         removed.length > 0
           ? broadcastUserToken(db, me, 'remove', record.token, removed)
-          : { synced: [], failed: [] },
+          : { synced: [], failed: [], skipped: [] },
       ])
       const sync: PushSummary = {
         synced: syncs.flatMap((s) => s.synced),
         failed: syncs.flatMap((s) => s.failed),
+        skipped: syncs.flatMap((s) => s.skipped),
       }
       return { ok: true as const, sync }
     }),

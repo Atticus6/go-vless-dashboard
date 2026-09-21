@@ -53,24 +53,42 @@ import type { RouterOutputs } from '@/lib/trpc'
 
 type NodeUserItem = RouterOutputs['nodes']['nodeUserList']['users'][number]
 
-type PushSync = { synced: string[]; failed: string[] }
+type PushSync = { synced: string[]; failed: string[]; skipped?: string[] }
 
-// 推送结果拼到 toast 后面：全部成功 / 部分失败 / 暂无节点（下次注册自动同步）.
+// 推送结果拼到 toast 后面：全部成功 / 部分失败 / 离线跳过 / 暂无节点（下次注册自动同步）.
 function formatSync(
   sync: PushSync | undefined,
   t: (key: string, opts?: Record<string, string | number>) => string,
 ): string {
-  if (!sync || (sync.synced.length === 0 && sync.failed.length === 0)) {
+  const synced = sync?.synced ?? []
+  const failed = sync?.failed ?? []
+  const skipped = sync?.skipped ?? []
+  if (synced.length === 0 && failed.length === 0 && skipped.length === 0) {
     return `，${t('nodes.nodeUserNoNodes')}`
   }
-  if (sync.failed.length === 0) {
-    return `，${t('nodes.nodeUserPushed', { count: sync.synced.length })}`
+  const parts: string[] = []
+  if (failed.length === 0) {
+    if (synced.length > 0) {
+      parts.push(t('nodes.nodeUserPushed', { count: synced.length }))
+    }
+  } else {
+    parts.push(
+      t('nodes.nodeUserPushPartial', {
+        synced: synced.length,
+        failed: failed.length,
+        names: failed.join('、'),
+      }),
+    )
   }
-  return `，${t('nodes.nodeUserPushPartial', {
-    synced: sync.synced.length,
-    failed: sync.failed.length,
-    names: sync.failed.join('、'),
-  })}`
+  if (skipped.length > 0) {
+    parts.push(
+      t('nodes.nodeUserPushSkipped', {
+        count: skipped.length,
+        names: skipped.join('、'),
+      }),
+    )
+  }
+  return `，${parts.join('，')}`
 }
 
 export const Route = createFileRoute('/dashboard/node-users')({
