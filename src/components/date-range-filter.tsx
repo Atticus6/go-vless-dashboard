@@ -73,12 +73,14 @@ export function DateRangeFilter({
             id={id}
             className={cn(
               buttonVariants({ variant: 'outline' }),
-              'flex-1 justify-between font-normal',
+              'min-w-0 flex-1 justify-between font-normal',
               from == null && 'text-muted-foreground',
             )}
           >
-            {label ?? <span>{t('traffic.pickRange')}</span>}
-            <CalendarIcon />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {label ?? t('traffic.pickRange')}
+            </span>
+            <CalendarIcon className="shrink-0" />
           </PopoverTrigger>
           <PopoverContent className="w-auto overflow-hidden p-0" align="start">
             <Calendar

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { subFormatSchema, subQuerySchema } from '!/lib/subscription'
+import { hostnameOf, subFormatSchema, subQuerySchema } from '!/lib/subscription'
 
 const invalidName = 'invalid name'
 const invalidBaseUrl = 'invalid baseUrl (want http(s)://host[:port])'
@@ -86,11 +86,22 @@ export const updateBackendsInputSchema = z.object({
   version: updateVersionSchema,
 })
 
+// 节点额外地址（CDN/优选）：https://host 或裸 host，前端一行一个存数组；
+// 提不出主机名的条目一律拒绝；上限 20 条.
+export const extraUrlsSchema = z
+  .array(z.string().trim().min(1).max(512))
+  .max(20)
+  .refine(
+    (arr) => arr.every((v) => hostnameOf(v) !== ''),
+    'invalid address (want https://host or bare host)',
+  )
+
 export const updateNodeInputSchema = z.object({
   id: nodeIdSchema,
   name: nodeNameSchema.optional(),
   baseUrl: baseUrlSchema.optional(),
   configKey: configKeySchema.optional(),
+  extraUrls: extraUrlsSchema.optional(),
 })
 
 export const usersInputSchema = z.object({

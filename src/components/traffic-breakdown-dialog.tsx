@@ -29,8 +29,9 @@ import { formatNodeName } from '@/lib/country'
 import { trpc } from '@/lib/trpc'
 
 // 分组柱数上限：超出收进“其他”，横轴保持可读；Y 轴名字超长截断，tooltip 看全名.
+// Y 轴宽按刻度文本自动测量（width="auto"），中英文混排都不裁剪.
 const MAX_GROUPS = 15
-const NAME_TICK_LEN = 12
+const NAME_TICK_LEN = 10
 
 function truncateName(s: string): string {
   return s.length > NAME_TICK_LEN ? `${s.slice(0, NAME_TICK_LEN)}…` : s
@@ -86,9 +87,16 @@ export function TrafficBreakdownDialog({
       : null
 
   // config key 即 dataKey：tooltip / 图例文案与颜色都从这里取.
+  // 上行绿、下行蓝，明暗主题各一套，保证两边一眼区分.
   const chartConfig = {
-    up: { label: t('traffic.up'), color: 'var(--chart-1)' },
-    down: { label: t('traffic.down'), color: 'var(--chart-2)' },
+    up: {
+      label: t('traffic.up'),
+      theme: { light: '#059669', dark: '#34d399' },
+    },
+    down: {
+      label: t('traffic.down'),
+      theme: { light: '#2563eb', dark: '#60a5fa' },
+    },
   } satisfies ChartConfig
 
   // 后端已按总量倒序；Top N 之外并入“其他”.
@@ -120,7 +128,7 @@ export function TrafficBreakdownDialog({
         if (!next) onClose()
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -139,7 +147,7 @@ export function TrafficBreakdownDialog({
           </p>
         )}
         {!loading && !error && hasData && (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <p className="text-muted-foreground">
                 {t('traffic.periodUp')}:{' '}
@@ -154,54 +162,71 @@ export function TrafficBreakdownDialog({
                 </span>
               </p>
             </div>
-            <div
-              style={{
-                height: Math.min(560, Math.max(260, groups.length * 46 + 80)),
-              }}
-            >
-              <ChartContainer config={chartConfig} className="h-full w-full">
-                <BarChart
-                  accessibilityLayer
-                  layout="vertical"
-                  data={groups}
-                  margin={{ right: 12 }}
-                >
-                  <CartesianGrid horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => formatTick(Number(v))}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={116}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => truncateName(String(v))}
-                  />
+            <ChartContainer config={chartConfig} className="min-h-[320px] w-full">
+              <BarChart accessibilityLayer data={groups}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  height={64}
+                  angle={-30}
+                  textAnchor="end"
+                  interval={0}
+                  tickFormatter={(v) => truncateName(String(v))}
+                />
+                <YAxis
+                  type="number"
+                  // 显式留 5% 余量：最高柱不到顶，顶部刻度也有位置显示.
+                  domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.05)]}
+                  tickLine={false}
+                  axisLine={false}
+                  width={52}
+                  tickFormatter={(v) => formatTick(Number(v))}
+                />
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
-                        formatter={(value) => formatBytes(Number(value))}
+                        // 标题取该柱分组的全名（轴上截断显示，这里看全名）.
+                        labelFormatter={(_label, payload) => {
+                          const first = Array.isArray(payload)
+                            ? payload[0]
+                            : undefined
+                          const name = (
+                            first as
+                              | { payload?: { name?: unknown } }
+                              | undefined
+                          )?.payload?.name
+                          return typeof name === 'string'
+                            ? name
+                            : String(_label ?? '')
+                        }}
+                        // 自定义 formatter 会整行替换默认渲染，这里把名字+数值一起画出来.
+                        formatter={(value, name) => (
+                          <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                            <span className="text-muted-foreground">
+                              {String(name) === 'up'
+                                ? t('traffic.up')
+                                : t('traffic.down')}
+                            </span>
+                            <span className="font-mono font-medium text-foreground tabular-nums">
+                              {formatBytes(Number(value))}
+                            </span>
+                          </div>
+                        )}
                       />
                     }
                   />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  <Bar
-                    dataKey="up"
-                    fill="var(--color-up)"
-                    radius={[0, 4, 4, 0]}
-                  />
-                  <Bar
-                    dataKey="down"
-                    fill="var(--color-down)"
-                    radius={[0, 4, 4, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </div>
+                <ChartLegend content={<ChartLegendContent />} />
+                <Bar dataKey="up" fill="var(--color-up)" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="down"
+                  fill="var(--color-down)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
           </div>
         )}
       </DialogContent>

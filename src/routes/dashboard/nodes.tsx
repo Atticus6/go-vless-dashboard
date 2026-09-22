@@ -67,6 +67,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1414,7 +1415,12 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
   }, [nodeUserId, nodeUsers])
   const hosts = useMemo(() => {
     const out: string[] = []
-    for (const raw of [...item.reportedUrls, item.reportedTunnelUrl ?? '']) {
+    // 自填额外地址优先（与订阅排序一致：额外在前、上报随后、隧道垫底）.
+    for (const raw of [
+      ...item.extraUrls,
+      ...item.reportedUrls,
+      item.reportedTunnelUrl ?? '',
+    ]) {
       const host = hostnameOf(raw)
       if (host && !out.includes(host)) out.push(host)
     }
@@ -1621,6 +1627,8 @@ function EditForm({
   const [name, setName] = useState(item.name)
   const [baseUrl, setBaseUrl] = useState(item.baseUrl ?? '')
   const [configKey, setConfigKey] = useState('')
+  // 额外地址：一行一个，后端存 string[]；空即清空.
+  const [extraText, setExtraText] = useState(item.extraUrls.join('\n'))
   const [formError, setFormError] = useState('')
   const updateNode = trpc.nodes.update.useMutation({
     onSuccess: () => void utils.nodes.invalidate(),
@@ -1630,9 +1638,19 @@ function EditForm({
     event.preventDefault()
     setFormError('')
     try {
-      // key 留空表示不修改
+      // key 留空表示不修改；额外地址按行切分，去空去重.
+      const extraUrls = [
+        ...new Set(
+          extraText
+            .split('\n')
+            .map((s) => s.trim())
+            .filter((s) => s !== ''),
+        ),
+      ]
       const payload =
-        configKey.length > 0 ? { name, baseUrl, configKey } : { name, baseUrl }
+        configKey.length > 0
+          ? { name, baseUrl, configKey, extraUrls }
+          : { name, baseUrl, extraUrls }
       await updateNode.mutateAsync({ id: item.id, ...payload })
       toast.success(t('nodes.saved'))
       onSaved()
@@ -1673,6 +1691,18 @@ function EditForm({
           onChange={(event) => setConfigKey(event.target.value)}
           placeholder={t('nodes.configKeyKeep')}
         />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="edit-node-extra">{t('nodes.extraTitle')}</Label>
+        <Textarea
+          id="edit-node-extra"
+          value={extraText}
+          onChange={(event) => setExtraText(event.target.value)}
+          placeholder={t('nodes.extraPlaceholder')}
+          rows={3}
+          className="font-mono text-xs"
+        />
+        <p className="text-xs text-muted-foreground">{t('nodes.extraDesc')}</p>
       </div>
       {formError && <p className="text-sm text-destructive">{formError}</p>}
       <DialogFooter>

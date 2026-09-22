@@ -117,9 +117,16 @@ function TrafficStatsDialog({
       ? statsQuery.error.message
       : null
   // config key 即 dataKey：tooltip / 图例文案与颜色都从这里取.
+  // 上行绿、下行蓝，明暗主题各一套，保证两边一眼区分.
   const chartConfig = {
-    up: { label: t('traffic.up'), color: 'var(--chart-1)' },
-    down: { label: t('traffic.down'), color: 'var(--chart-2)' },
+    up: {
+      label: t('traffic.up'),
+      theme: { light: '#059669', dark: '#34d399' },
+    },
+    down: {
+      label: t('traffic.down'),
+      theme: { light: '#2563eb', dark: '#60a5fa' },
+    },
   } satisfies ChartConfig
   const chartData = days.map((d) => ({
     date: d.date,
@@ -134,7 +141,7 @@ function TrafficStatsDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('traffic.analytics')}</DialogTitle>
           <DialogDescription>{t('traffic.analyticsDesc')}</DialogDescription>
@@ -239,7 +246,19 @@ function TrafficStatsDialog({
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
-                      formatter={(value) => formatBytes(Number(value))}
+                      // 自定义 formatter 会整行替换默认渲染，这里把名字+数值一起画出来.
+                      formatter={(value, name) => (
+                        <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                          <span className="text-muted-foreground">
+                            {String(name) === 'up'
+                              ? t('traffic.up')
+                              : t('traffic.down')}
+                          </span>
+                          <span className="font-mono font-medium text-foreground tabular-nums">
+                            {formatBytes(Number(value))}
+                          </span>
+                        </div>
+                      )}
                     />
                   }
                 />

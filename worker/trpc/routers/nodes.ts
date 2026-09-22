@@ -473,6 +473,7 @@ export const nodesRouter = router({
         backendVersion: node.backendVersion,
         reportedUrls: node.reportedUrls,
         reportedTunnelUrl: node.reportedTunnelUrl,
+        extraUrls: node.extraUrls,
         countryCode: node.countryCode,
       })
       .from(node)
@@ -490,6 +491,8 @@ export const nodesRouter = router({
         backendVersion: row.backendVersion,
         reportedUrls: parseReportedUrls(row.reportedUrls),
         reportedTunnelUrl: row.reportedTunnelUrl,
+        // 额外地址 JSON mode 直出 string[]，无需 parse.
+        extraUrls: row.extraUrls,
         // 原始名 + 国家码分别返回，展示层按需拼旗帜（编辑框必须用原始名）.
         countryCode: row.countryCode,
         online: isOnline(row.lastSeenAt),
@@ -510,6 +513,8 @@ export const nodesRouter = router({
       backendVersion: null,
       reportedUrls: null,
       reportedTunnelUrl: null,
+      // 额外地址缺省空数组（JSON mode）.
+      extraUrls: [],
       // 新节点排序默认 0（与老数据一致），同值按创建时间排.
       sortOrder: 0,
       // 国家代码未知（首次注册时由边缘信息写入）.
@@ -529,6 +534,8 @@ export const nodesRouter = router({
     const name = input.name ?? existing.name
     const baseUrl = input.baseUrl ?? existing.baseUrl
     const configKey = input.configKey ?? existing.configKey
+    // 额外地址缺省沿用旧值（JSON mode 下直接是 string[]）.
+    const extraUrls = input.extraUrls ?? existing.extraUrls
 
     // 地址与密钥都齐了且刚改过，才实时校验；缺一项先存着。
     const connectionChanged =
@@ -545,7 +552,7 @@ export const nodesRouter = router({
 
     await db
       .update(node)
-      .set({ name, baseUrl, configKey, updatedAt: new Date() })
+      .set({ name, baseUrl, configKey, extraUrls, updatedAt: new Date() })
       .where(eq(node.id, input.id))
     const updated = await getOwnedNode(db, input.id, ctx.session.user.id)
     return { node: updated ? toPublic(updated) : null }

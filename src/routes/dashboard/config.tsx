@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   RadioGroup,
   RadioGroupItem,
@@ -25,6 +26,15 @@ export const Route = createFileRoute('/dashboard/config')({
 
 type Channel = 'off' | 'feishu' | 'telegram'
 
+// 与后端 domainPatternSchema 同规则：example.com 或 *.example.com，
+// 每段标签首尾字母数字；前端先拦一道，错误信息可 i18n.
+function isDomainPattern(v: string): boolean {
+  const body = v.startsWith('*.') ? v.slice(2) : v
+  if (!body || body.length > 253) return false
+  const label = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?'
+  return new RegExp(`^${label}(?:\\.${label})*$`, 'i').test(body)
+}
+
 function ConfigPage() {
   const { t } = useTranslation()
   const utils = trpc.useUtils()
@@ -34,51 +44,73 @@ function ConfigPage() {
   const [secret, setSecret] = useState('')
   const [botToken, setBotToken] = useState('')
   const [chatId, setChatId] = useState('')
+  // 优选地址域名：一行一个；updateConfig 全量覆盖，读取/保存都要带上，否则会被清空.
+  const [frontText, setFrontText] = useState('')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    const notify = configQuery.data?.config.notifyConfig
-    if (!notify || loaded) return
+    const config = configQuery.data?.config
+    if (!config || loaded) return
     setLoaded(true)
-    if (notify.feishu) {
+    const notify = config.notifyConfig
+    if (notify?.feishu) {
       setChannel('feishu')
       setWebhook(notify.feishu.webhook)
       setSecret(notify.feishu.secret ?? '')
-    } else if (notify.telegram) {
+    } else if (notify?.telegram) {
       setChannel('telegram')
       setBotToken(notify.telegram.botToken)
       setChatId(notify.telegram.chatId)
     }
+    setFrontText((config.frontDomains ?? []).join('\n'))
   }, [configQuery.data, loaded])
 
   const updateConfig = trpc.notify.updateConfig.useMutation()
   const testNotify = trpc.notify.test.useMutation()
 
   async function handleSave() {
-    try {
-      await updateConfig.mutateAsync(
-        channel === 'off'
-          ? {}
-          : channel === 'feishu'
-            ? {
-                notifyConfig: {
-                  feishu: {
-                    enabled: true,
-                    webhook: webhook.trim(),
-                    secret: secret.trim() || undefined,
-                  },
-                },
-              }
-            : {
-                notifyConfig: {
-                  telegram: {
-                    enabled: true,
-                    botToken: botToken.trim(),
-                    chatId: chatId.trim(),
-                  },
+    // 先拦非法域名行，报错定位到具体行内容.
+    const domains = [
+      ...new Set(
+        frontText
+          .split('\n')
+          .map((s) => s.trim())
+          .filter((s) => s !== ''),
+      ),
+    ]
+    const bad = domains.find((d) => !isDomainPattern(d))
+    if (bad) {
+      toast.error(t('front.invalid', { value: bad }))
+      return
+    }
+    const notifyPart =
+      channel === 'off'
+        ? {}
+        : channel === 'feishu'
+          ? {
+              notifyConfig: {
+                feishu: {
+                  enabled: true,
+                  webhook: webhook.trim(),
+                  secret: secret.trim() || undefined,
                 },
               },
-      )
+            }
+          : {
+              notifyConfig: {
+                telegram: {
+                  enabled: true,
+                  botToken: botToken.trim(),
+                  chatId: chatId.trim(),
+                },
+              },
+            }
+    try {
+      // 全量覆盖：frontDomains 为空即省略（= 清空），非空才带上.
+      await updateConfig.mutateAsync({
+        ...notifyPart,
+        ...(domains.length > 0 ? { frontDomains: domains } : {}),
+      })
       void utils.notify.getConfig.invalidate()
       toast.success(t('notify.saved'))
     } catch (err) {
@@ -239,6 +271,29 @@ function ConfigPage() {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('front.title')}</CardTitle>
+              <CardDescription>{t('front.desc')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                <Label htmlFor="front-domains">{t('front.title')}</Label>
+                <Textarea
+                  id="front-domains"
+                  value={frontText}
+                  onChange={(event) => setFrontText(event.target.value)}
+                  placeholder={t('front.placeholder')}
+                  rows={4}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('front.hint')}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="flex gap-2">
             <Button

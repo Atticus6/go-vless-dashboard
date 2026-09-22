@@ -22,6 +22,9 @@
       "/api/*"
     ]
   },
+  "placement":{
+    "mode": "smart"
+  },
   "observability": {
     "enabled": true,
     "logs": {

@@ -223,7 +223,10 @@
     "updateAllSkipped": "{{count}} 个离线跳过：{{names}}",
     "analyticsByUserDesc": "该节点下各用户的用量汇总（累计值差分，跨度上限 31 天）。",
     "analyticsByNode": "按节点查看流量",
-    "analyticsByNodeDesc": "该用户在各节点的用量汇总（累计值差分，跨度上限 31 天）。"
+    "analyticsByNodeDesc": "该用户在各节点的用量汇总（累计值差分，跨度上限 31 天）。",
+    "extraTitle": "额外地址",
+    "extraDesc": "自填 CDN / 优选地址，一行一个；订阅与复制链接时优先使用，上报地址会被后端覆盖但此处不受影响。",
+    "extraPlaceholder": "cdn.example.com（一行一个）"
   },
   "traffic": {
     "desc": "后端用户流量的周期快照（按记录时间倒序）。",
@@ -251,5 +254,12 @@
     "prev": "上一页",
     "next": "下一页",
     "other": "其他"
+  },
+  "front": {
+    "title": "优选地址域名",
+    "desc": "命中以下域名的上报地址，订阅连接改走优选地址（SNI / Host 头不变）。trycloudflare 隧道域名默认命中，无需填写。",
+    "placeholder": "example.com\n*.example.com（一行一个）",
+    "hint": "*.example.com 匹配任意级子域（不含裸域，裸域单列一条）；空行忽略，最多 50 条。",
+    "invalid": "域名格式非法：{{value}}（example.com 或 *.example.com）"
   }
 }

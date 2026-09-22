@@ -29,6 +29,13 @@ export const node = sqliteTable('node', {
   // 每次注册原样落库的上报地址：urls JSON 数组 + 隧道地址（可空）。
   reportedUrls: text('reported_urls'),
   reportedTunnelUrl: text('reported_tunnel_url'),
+  // 用户自填额外地址（CDN/优选）：JSON 数组，缺省 []，只在编辑页修改；
+  // 上报地址会被后端覆盖，额外地址不受影响，订阅与复制链接时优先使用.
+  // JSON mode + $type，读写直接是 string[]，与 user.config 同模式.
+  extraUrls: text('extra_urls', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
   // 手动排序：默认 0，管理表格拖拽后按数组位置重写；
   // list 与订阅输出按该字段升序（值相同按创建时间兜底）.
   sortOrder: integer('sort_order').notNull().default(0),

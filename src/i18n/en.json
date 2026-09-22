@@ -223,7 +223,10 @@
     "updateAllSkipped": "{{count}} offline skipped: {{names}}",
     "analyticsByUserDesc": "Per-user usage on this node (cumulative diffs, max 31 days).",
     "analyticsByNode": "Usage by node",
-    "analyticsByNodeDesc": "Per-node usage of this user (cumulative diffs, max 31 days)."
+    "analyticsByNodeDesc": "Per-node usage of this user (cumulative diffs, max 31 days).",
+    "extraTitle": "Extra addresses",
+    "extraDesc": "Custom CDN / preferred addresses, one per line; used first in subscriptions and copied links. Reported addresses may be overwritten by the backend, these are not.",
+    "extraPlaceholder": "cdn.example.com (one per line)"
   },
   "traffic": {
     "desc": "Periodic snapshots of backend user traffic (newest first).",
@@ -251,5 +254,12 @@
     "prev": "Prev",
     "next": "Next",
     "other": "Other"
+  },
+  "front": {
+    "title": "Preferred front domains",
+    "desc": "Reported addresses matching these domains dial via the preferred front (SNI / Host unchanged). trycloudflare tunnel domains are fronted by default.",
+    "placeholder": "example.com\n*.example.com (one per line)",
+    "hint": "*.example.com matches subdomains at any level (not the bare domain); blank lines ignored, max 50.",
+    "invalid": "Invalid domain: {{value}} (example.com or *.example.com)"
   }
 }

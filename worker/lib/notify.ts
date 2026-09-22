@@ -24,10 +24,31 @@ export const notifyConfigSchema = z.object({
 
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
 
+// 优选地址域名（通配符数组）：命中该表的上报域名，订阅连接地址改走
+// 优选前置（QUICK_TUNNEL_FRONT），SNI / Host 头保持原域名；
+// 'example.com' 精确匹配裸域，'*.example.com' 匹配任意级子域（不含裸域，
+// 裸域需单列一条）；大小写不敏感，缺省空数组（默认前置表见 subscription）.
+const domainPatternSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(253)
+  .refine((v) => {
+    const body = v.startsWith('*.') ? v.slice(2) : v
+    // 每段标签首尾必须为字母数字，段间单点分隔.
+    const label = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?'
+    return (
+      body.length > 0 &&
+      body.length <= 253 &&
+      new RegExp(`^${label}(?:\\.${label})*$`, 'i').test(body)
+    )
+  }, 'invalid domain pattern (example.com or *.example.com)')
+
 // 用户配置对象：notifyConfig 是其中一项，后续配置项往这里加 key；
 // 缺省为 {}（空配置 = 全静默）.
 export const configSchema = z.object({
   notifyConfig: notifyConfigSchema.optional(),
+  frontDomains: z.array(domainPatternSchema).max(50).optional(),
 })
 
 export type Config = z.infer<typeof configSchema>

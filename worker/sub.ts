@@ -1,15 +1,17 @@
 import { Hono } from 'hono'
 import { asc, eq } from 'drizzle-orm'
 import { node, nodeUser, nodeUserNode } from '!/db/app-schema'
+import { user } from '!/db/schema'
 import { createDb } from '!/db/index'
 import {
   buildSubEntries,
+  DEFAULT_FRONT_PATTERNS,
   detectSubFormat,
   formatSubBody,
   resolveSubParams,
 } from '!/lib/subscription'
 import { subQueryInputSchema, subTokenParamSchema } from '!/lib/validators'
-import { notifyUser } from '!/lib/notify'
+import { configSchema, notifyUser } from '!/lib/notify'
 import { zValidator } from '!/lib/zod-validator'
 
 // 用户订阅地址：GET /api/sub/:token，返回该 token 可访问的全部 vless 节点。
@@ -42,6 +44,7 @@ const subApp = new Hono<{ Bindings: Env }>().get(
         name: node.name,
         reportedUrls: node.reportedUrls,
         reportedTunnelUrl: node.reportedTunnelUrl,
+        extraUrls: node.extraUrls,
         countryCode: node.countryCode,
       })
       .from(node)
@@ -59,16 +62,32 @@ const subApp = new Hono<{ Bindings: Env }>().get(
       : owned
 
     // 后端同步靠注册心跳与增删推送保证，这里只组装返回，不做逐节点 ensure.
+    // 前置域名：默认表 + 属主 config.frontDomains 合并去重，命中改走优选地址.
+    const cfgRows = await db
+      .select({ config: user.config })
+      .from(user)
+      .where(eq(user.id, owner.userId))
+      .limit(1)
+    const parsed = configSchema.safeParse(cfgRows[0]?.config ?? {})
+    const frontPatterns = [
+      ...DEFAULT_FRONT_PATTERNS,
+      ...(parsed.success ? (parsed.data.frontDomains ?? []) : []),
+    ].filter((v, i, a) => a.indexOf(v) === i)
     const entries = buildSubEntries(
       scoped.map((n) => ({
         id: n.id,
         name: n.name,
-        reportedUrls: parseReportedUrls(n.reportedUrls),
+        // 自填额外地址放最前优先（JSON mode 直出 string[]），上报随后、隧道垫底.
+        reportedUrls: [
+          ...(n.extraUrls ?? []),
+          ...parseReportedUrls(n.reportedUrls),
+        ],
         reportedTunnelUrl: n.reportedTunnelUrl,
         countryCode: n.countryCode,
       })),
       token,
       params,
+      frontPatterns,
     )
     if (entries.length === 0) return c.text('no nodes available', 404)
     // 订阅被成功拉取：异步通知属主（waitUntil 不阻塞本次返回；未配通知静默跳过）.

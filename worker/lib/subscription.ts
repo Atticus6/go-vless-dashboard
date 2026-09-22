@@ -26,18 +26,43 @@ export interface SubLinkEntry {
   link: string
 }
 
-// Cloudflare 快速隧道域名直连在部分地区质量差：连接改走优选地址，
-// SNI 与 Host 头保持隧道域名不变，边缘仍按 SNI/Host 回源到隧道.
-const QUICK_TUNNEL_SUFFIX = /(^|\.)trycloudflare\.com$/i
+// 命中前置表的域名直连质量差：连接改走优选地址，
+// SNI 与 Host 头保持原域名不变，边缘仍按 SNI/Host 回源.
+// 默认前置表（兼容老行为）：trycloudflare 隧道域名；
+// 用户可在 config.frontDomains 里追加（与默认表合并去重后生效）.
 const QUICK_TUNNEL_FRONT = 'www.shopify.com'
+export const DEFAULT_FRONT_PATTERNS: readonly string[] = [
+  'trycloudflare.com',
+  '*.trycloudflare.com',
+]
 
-export function isQuickTunnel(host: string): boolean {
-  return QUICK_TUNNEL_SUFFIX.test(host.trim())
+/** 通配符匹配：'*.example.com' 匹配任意级子域（不含裸域）；
+ * 普通条目精确匹配；大小写不敏感，首尾点忽略. */
+export function matchDomainPattern(host: string, pattern: string): boolean {
+  const h = host.trim().toLowerCase().replace(/\.+$/, '')
+  const p = pattern.trim().toLowerCase().replace(/\.+$/, '')
+  if (!h || !p) return false
+  if (p.startsWith('*.')) {
+    const suffix = p.slice(1) // '.example.com'
+    return h.length > suffix.length && h.endsWith(suffix)
+  }
+  return h === p
 }
 
-/** 连接地址：隧道域名换优选地址，其他原样. */
-export function dialAddress(host: string): string {
-  return isQuickTunnel(host) ? QUICK_TUNNEL_FRONT : host
+/** 命中任一条前置域名即走优选地址. */
+export function isFrontedDomain(
+  host: string,
+  patterns: readonly string[] = DEFAULT_FRONT_PATTERNS,
+): boolean {
+  return patterns.some((p) => matchDomainPattern(host, p))
+}
+
+/** 连接地址：命中前置域换优选地址，其他原样. */
+export function dialAddress(
+  host: string,
+  patterns: readonly string[] = DEFAULT_FRONT_PATTERNS,
+): string {
+  return isFrontedDomain(host, patterns) ? QUICK_TUNNEL_FRONT : host
 }
 
 // 输出格式：clash=YAML，vless=明文链接组，base64=v2rayN 标准订阅体.
@@ -244,6 +269,7 @@ export function buildSubEntries(
   nodes: SubNodeInput[],
   token: string,
   params: SubParams,
+  frontPatterns: readonly string[] = DEFAULT_FRONT_PATTERNS,
 ): SubLinkEntry[] {
   const out: SubLinkEntry[] = []
   const used = new Set<string>()
@@ -271,7 +297,7 @@ export function buildSubEntries(
         i += 1
       }
       used.add(remark)
-      const address = dialAddress(host)
+      const address = dialAddress(host, frontPatterns)
       out.push({
         nodeId: node.id,
         nodeName: node.name,
