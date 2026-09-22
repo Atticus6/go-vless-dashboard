@@ -70,7 +70,9 @@
     "secret": "Signing secret (optional)",
     "secretPlaceholder": "Only if the bot requires signing",
     "botToken": "Bot Token",
-    "chatId": "Chat ID"
+    "chatId": "Chat ID",
+    "unsaved": "Unsaved changes",
+    "allSaved": "All saved"
   },
   "nodes": {
     "title": "Nodes",

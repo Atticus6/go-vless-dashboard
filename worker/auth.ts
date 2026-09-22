@@ -40,6 +40,17 @@ export function createAuth(env: Env, db: Database) {
     emailAndPassword: {
       enabled: true,
     },
+    session: {
+      // 会话有效期 7 天，活跃续期每天最多写库一次；
+      // cookieCache 把会话塞进签名 cookie，15 分钟内免查库（省 D1 读行），
+      // 过期后自动回源数据库，用户侧无感.
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 15,
+      },
+    },
     plugins: [multiSession()],
     user: {
       // 账号注销：密码确认后立即删除（本项目无邮件通道，不走验证邮件）。

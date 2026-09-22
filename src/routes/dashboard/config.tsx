@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { FormSkeleton } from '@/components/loading-skeletons'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -47,23 +48,62 @@ function ConfigPage() {
   // 优选地址域名：一行一个；updateConfig 全量覆盖，读取/保存都要带上，否则会被清空.
   const [frontText, setFrontText] = useState('')
   const [loaded, setLoaded] = useState(false)
+  // 已保存快照：保存按钮只在脏时可用；加载完成前禁用，避免空状态覆盖线上配置.
+  const [snapshot, setSnapshot] = useState('')
+
+  function takeSnapshot(values: {
+    channel: Channel
+    webhook: string
+    secret: string
+    botToken: string
+    chatId: string
+    frontText: string
+  }): string {
+    return JSON.stringify(values)
+  }
 
   useEffect(() => {
     const config = configQuery.data?.config
     if (!config || loaded) return
     setLoaded(true)
     const notify = config.notifyConfig
+    let next: Channel = 'off'
+    let nextWebhook = ''
+    let nextSecret = ''
+    let nextBotToken = ''
+    let nextChatId = ''
     if (notify?.feishu) {
-      setChannel('feishu')
-      setWebhook(notify.feishu.webhook)
-      setSecret(notify.feishu.secret ?? '')
+      next = 'feishu'
+      nextWebhook = notify.feishu.webhook
+      nextSecret = notify.feishu.secret ?? ''
     } else if (notify?.telegram) {
-      setChannel('telegram')
-      setBotToken(notify.telegram.botToken)
-      setChatId(notify.telegram.chatId)
+      next = 'telegram'
+      nextBotToken = notify.telegram.botToken
+      nextChatId = notify.telegram.chatId
     }
-    setFrontText((config.frontDomains ?? []).join('\n'))
+    const nextFront = (config.frontDomains ?? []).join('\n')
+    setChannel(next)
+    setWebhook(nextWebhook)
+    setSecret(nextSecret)
+    setBotToken(nextBotToken)
+    setChatId(nextChatId)
+    setFrontText(nextFront)
+    setSnapshot(
+      takeSnapshot({
+        channel: next,
+        webhook: nextWebhook,
+        secret: nextSecret,
+        botToken: nextBotToken,
+        chatId: nextChatId,
+        frontText: nextFront,
+      }),
+    )
   }, [configQuery.data, loaded])
+
+  const isDirty =
+    snapshot !== '' &&
+    takeSnapshot({ channel, webhook, secret, botToken, chatId, frontText }) !==
+      snapshot
 
   const updateConfig = trpc.notify.updateConfig.useMutation()
   const testNotify = trpc.notify.test.useMutation()
@@ -107,10 +147,22 @@ function ConfigPage() {
             }
     try {
       // 全量覆盖：frontDomains 为空即省略（= 清空），非空才带上.
-      await updateConfig.mutateAsync({
+      const payload = {
         ...notifyPart,
         ...(domains.length > 0 ? { frontDomains: domains } : {}),
-      })
+      }
+      await updateConfig.mutateAsync(payload)
+      // 快照按落库形态记（去空格后），否则保存完还显示脏.
+      setSnapshot(
+        takeSnapshot({
+          channel,
+          webhook: webhook.trim(),
+          secret: secret.trim(),
+          botToken: botToken.trim(),
+          chatId: chatId.trim(),
+          frontText: domains.join('\n'),
+        }),
+      )
       void utils.notify.getConfig.invalidate()
       toast.success(t('notify.saved'))
     } catch (err) {
@@ -185,6 +237,16 @@ function ConfigPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('notify.channel')}</CardTitle>
+              <CardAction>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={testNotify.isPending}
+                  onClick={() => void handleTest()}
+                >
+                  {t('notify.testSend')}
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent>
               <RadioGroup
@@ -272,9 +334,11 @@ function ConfigPage() {
             </Card>
           )}
 
+          <h2 className="text-lg font-semibold tracking-tight">
+            {t('front.title')}
+          </h2>
           <Card>
             <CardHeader>
-              <CardTitle>{t('front.title')}</CardTitle>
               <CardDescription>{t('front.desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -295,20 +359,16 @@ function ConfigPage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-2">
+          <div className="sticky bottom-4 flex items-center gap-2 rounded-xl border bg-background/90 p-3 shadow-md backdrop-blur">
             <Button
-              disabled={updateConfig.isPending}
+              disabled={!isDirty || updateConfig.isPending}
               onClick={() => void handleSave()}
             >
               {t('nodes.save')}
             </Button>
-            <Button
-              variant="outline"
-              disabled={testNotify.isPending}
-              onClick={() => void handleTest()}
-            >
-              {t('notify.testSend')}
-            </Button>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {isDirty ? t('notify.unsaved') : t('notify.allSaved')}
+            </span>
           </div>
         </>
       )}

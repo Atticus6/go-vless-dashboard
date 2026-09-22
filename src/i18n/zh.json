@@ -70,7 +70,9 @@
     "secret": "签名密钥（可空）",
     "secretPlaceholder": "只在机器人开启签名时填",
     "botToken": "Bot Token",
-    "chatId": "Chat ID"
+    "chatId": "Chat ID",
+    "unsaved": "有未保存的更改",
+    "allSaved": "已同步"
   },
   "nodes": {
     "title": "节点管理",
