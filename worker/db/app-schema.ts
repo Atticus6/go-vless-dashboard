@@ -100,7 +100,9 @@ export type NodeUserNodeRow = typeof nodeUserNode.$inferSelect
 // （展示为“未关联用户”，不断流）；节点用户被删时关联行按外键连带清理。
 // up/down 存原始字节数（后端 /config 的 upBytes/downBytes），方便求和排序；
 // recordedAt 落库时刻（库默认 now），同一批次多行时间戳一致。
-// 索引：查询页按（节点，时间）与（用户，时间）倒序分页，两组复合索引覆盖.
+// 索引：按（节点，时间）/（用户，时间）过滤 + 全局（时间，id）倒序；
+// 查询一律用 node_id IN (名下节点) 收敛归属，避免 JOIN 全表扫描；
+// cursor 分页 ORDER BY recorded_at DESC, id DESC 走 time 索引倒序提前停.
 export const trafficRecord = sqliteTable(
   'traffic_record',
   {
@@ -120,6 +122,7 @@ export const trafficRecord = sqliteTable(
   (t) => [
     index('traffic_record_node_time_idx').on(t.nodeId, t.recordedAt),
     index('traffic_record_user_time_idx').on(t.nodeUserId, t.recordedAt),
+    index('traffic_record_time_idx').on(t.recordedAt, t.id),
   ],
 )
 

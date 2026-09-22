@@ -222,6 +222,26 @@ export const trafficListInputSchema = z.object({
   cursor: z.string().min(1).max(256).optional(),
 })
 
+// 流量按天聚合：与 trafficList 同过滤（节点 / 节点用户 / 时间范围），
+// 缺省查近 14 天（含今天）；跨度上限 31 天在 router 层拒绝.
+// 上报是累计值（重启清零），聚合语义为“组内每日 max 差分”，由 router 落 SQL.
+export const trafficStatsInputSchema = z.object({
+  nodeId: nodeIdSchema.optional(),
+  nodeUserId: nodeIdSchema.optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
+})
+
+// 流量分组汇总：by=user 按节点用户分（查某节点下各用户用量），
+// by=node 按节点分（查某用户在各节点用量）；其余同 trafficStats.
+export const trafficBreakdownSchema = z.object({
+  by: z.enum(['user', 'node']),
+  nodeId: nodeIdSchema.optional(),
+  nodeUserId: nodeIdSchema.optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
+})
+
 // 后端流量上报请求体（公开接口，靠节点 id + key 鉴权）：
 // users 以 uuid(token) 标识用户——后端只认识 token，不认识 dashboard 节点用户 id；
 // dashboard 按 token 反查 node_user，查不到的 nodeUserId 记空（查询页显示未关联）。

@@ -20,6 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Activity,
+  ChartColumn,
   ChevronDown,
   Copy,
   GripVertical,
@@ -69,7 +70,10 @@ import { Label } from '@/components/ui/label'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
@@ -101,6 +105,7 @@ import {
 } from '@/components/ui/table'
 import type { BackendStatus, NodeItem } from '@/lib/nodes'
 import { trpc } from '@/lib/trpc'
+import { TrafficBreakdownDialog } from '@/components/traffic-breakdown-dialog'
 import {
   buildVlessLink,
   hostnameOf,
@@ -113,6 +118,7 @@ type NodeDialogKind =
   | 'test'
   | 'install'
   | 'copyVless'
+  | 'traffic'
   | 'edit'
   | 'delete'
   | 'update'
@@ -436,6 +442,16 @@ function NodesPage() {
         item={active?.kind === 'copyVless' ? active.item : null}
         onClose={() => close('copyVless')}
       />
+      {active?.kind === 'traffic' && (
+        <TrafficBreakdownDialog
+          open
+          onClose={() => close('traffic')}
+          title={formatNodeName(active.item.name, active.item.countryCode)}
+          description={t('nodes.analyticsByUserDesc')}
+          mode="user"
+          nodeId={active.item.id}
+        />
+      )}
       <EditDialog
         item={active?.kind === 'edit' ? active.item : null}
         onClose={() => close('edit')}
@@ -641,34 +657,46 @@ function NodeTableRow({
               </Button>
             }
           />
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onOpen('test', item)}>
-              <Activity className="text-muted-foreground" />
-              {t('nodes.connectivity')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpen('install', item)}>
-              <Terminal className="text-muted-foreground" />
-              {t('nodes.installCommands')}
-            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onOpen('copyVless', item)}>
-                              <Copy className="text-muted-foreground" />
-                              {t('nodes.copySubscription')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onOpen('update', item)}>
-                              <Upload className="text-muted-foreground" />
-                              {t('nodes.updateBackend')}
-                            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpen('edit', item)}>
-              <Pencil className="text-muted-foreground" />
-              {t('nodes.edit')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => onOpen('delete', item)}
-            >
-              <Trash2 />
-              {t('nodes.delete')}
-            </DropdownMenuItem>
+          <DropdownMenuContent align="end" className="min-w-48">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="max-w-56 truncate">
+                {formatNodeName(item.name, item.countryCode)}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onOpen('test', item)}>
+                <Activity className="text-muted-foreground" />
+                {t('nodes.connectivity')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onOpen('install', item)}>
+                <Terminal className="text-muted-foreground" />
+                {t('nodes.installCommands')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpen('copyVless', item)}>
+                <Copy className="text-muted-foreground" />
+                {t('nodes.copySubscription')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpen('traffic', item)}>
+                <ChartColumn className="text-muted-foreground" />
+                {t('traffic.analytics')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onOpen('update', item)}>
+                <Upload className="text-muted-foreground" />
+                {t('nodes.updateBackend')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpen('edit', item)}>
+                <Pencil className="text-muted-foreground" />
+                {t('nodes.edit')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onOpen('delete', item)}
+              >
+                <Trash2 />
+                {t('nodes.delete')}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>

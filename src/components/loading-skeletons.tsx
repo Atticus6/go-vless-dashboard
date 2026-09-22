@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from 'cn'
 
 // 表格骨架：圆角边框容器 + 表头条 + 若干行，贴合 Card + Table 的视觉.
@@ -86,6 +87,23 @@ export function DetailBoxSkeleton({ className }: { className?: string }) {
       <Skeleton className="h-4 w-1/3" />
       <Skeleton className="h-3 w-full" />
       <Skeleton className="h-3 w-2/3" />
+    </div>
+  )
+}
+
+// 图表加载：转圈动画 + 文字，占位高度与图表区一致，弹框共用.
+export function ChartLoading({ className }: { className?: string }) {
+  const { t } = useTranslation()
+  return (
+    <div
+      role="status"
+      className={cn(
+        'flex h-72 w-full flex-col items-center justify-center gap-3 text-muted-foreground',
+        className,
+      )}
+    >
+      <Spinner className="size-8" />
+      <p className="text-sm">{t('overview.loading')}</p>
     </div>
   )
 }

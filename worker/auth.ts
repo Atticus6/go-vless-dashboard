@@ -14,6 +14,10 @@ export function createAuth(env: Env, db: Database) {
   if (env.DOMAIN) {
     allowedHosts.push(env.DOMAIN);
   }
+
+  if(import.meta.env.DEV){
+    allowedHosts.push("localhost:5173")
+  }
   return betterAuth({
     // 同源多 host（本地 dev / workers.dev / 预览域名）：按请求 host 动态解析，
     // 未知 host 直接抛错而不静默回退；protocol auto 让 http(s)/Secure cookie 跟随请求。

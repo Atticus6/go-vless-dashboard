@@ -1,13 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { format } from 'date-fns'
-import { enUS, zhCN } from 'date-fns/locale'
-import { CalendarIcon, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { subDays } from 'date-fns'
+import { ChartColumn } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
 import { useTranslation } from 'react-i18next'
-import { cn } from 'cn'
-import { Button, buttonVariants } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -15,12 +13,27 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+  DateRangeFilter,
+  endOfDayISO,
+  startOfDayISO,
+} from '@/components/date-range-filter'
 import {
   Select,
   SelectContent,
@@ -37,7 +50,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatNodeName } from '@/lib/country'
-import { TableSkeleton } from '@/components/loading-skeletons'
+import { ChartLoading, TableSkeleton } from '@/components/loading-skeletons'
+import { formatBytes, formatTick } from '@/lib/bytes'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -56,114 +70,192 @@ type TrafficRecordItem =
 const DEFAULT_PAGE_SIZE = 10
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
-// 字节数格式化（B/KB/MB/GB/TB，两位小数），展示用.
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return '—'
-  if (n < 1024) return `${n} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = n
-  let unit = 'KB'
-  for (const u of units) {
-    unit = u
-    value /= 1024
-    if (value < 1024) break
-  }
-  return `${value.toFixed(2)} ${unit}`
-}
-
-// 日期转 ISO 过滤边界：开始取当天 00:00，结束取当天 23:59:59.999.
-function startOfDayISO(date: Date | undefined): string | undefined {
-  if (!date) return undefined
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
-}
-
-function endOfDayISO(date: Date | undefined): string | undefined {
-  if (!date) return undefined
-  const d = new Date(date)
-  d.setHours(23, 59, 59, 999)
-  return d.toISOString()
-}
-
-// 筛选用日期范围选择器：单个 Popover + Calendar（range 模式）。
-// 选完起止自动关闭，支持一键清除；仅选了 from 时按单天处理.
-// 宽屏双月、窄屏单月，避免小屏溢出.
-function DateRangeFilter({
-  id,
-  value,
-  onChange,
+// 流量分析弹框：节点 / 用户 / 日期筛选 + 按天柱状图（上行 / 下行双柱）。
+// 数据来自 nodes.trafficStats（累计值差分聚合，无数据日期补 0）；
+// 筛选独立于主表，打开时继承主表筛选项，无选择时默认近 14 天.
+function TrafficStatsDialog({
+  nodes,
+  users,
+  initialNodeId,
+  initialNodeUserId,
+  initialRange,
+  onClose,
 }: {
-  id: string
-  value: DateRange | undefined
-  onChange: (next: DateRange | undefined) => void
+  nodes: Array<{ id: string; name: string; countryCode: string | null }>
+  users: Array<{ id: string; name: string }>
+  initialNodeId: string
+  initialNodeUserId: string
+  initialRange: DateRange | undefined
+  onClose: () => void
 }) {
-  const { t, i18n } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const [twoMonths, setTwoMonths] = useState(false)
-  const locale = i18n.language.startsWith('zh') ? zhCN : enUS
+  const { t } = useTranslation()
+  const [nodeId, setNodeId] = useState(initialNodeId)
+  const [nodeUserId, setNodeUserId] = useState(initialNodeUserId)
+  // 缺省近 14 天（含今天），与后端 trafficStats 缺省对齐.
+  const [range, setRange] = useState<DateRange | undefined>(
+    initialRange ?? { from: subDays(new Date(), 13), to: new Date() },
+  )
 
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 720px)')
-    const update = () => setTwoMonths(mq.matches)
-    update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
-  }, [])
-
-  const from = value?.from
-  const to = value?.to
-  const label = ((): string | null => {
-    if (from == null) return null
-    if (to == null || from.getTime() === to.getTime()) {
-      return format(from, 'PPP', { locale })
-    }
-    return `${format(from, 'PPP', { locale })} – ${format(to, 'PPP', { locale })}`
-  })()
+  const input = useMemo(
+    () => ({
+      nodeId: nodeId || undefined,
+      nodeUserId: nodeUserId || undefined,
+      from: startOfDayISO(range?.from),
+      // 仅选 from 时按单天查.
+      to: endOfDayISO(range?.to ?? range?.from),
+    }),
+    [nodeId, nodeUserId, range],
+  )
+  const statsQuery = trpc.nodes.trafficStats.useQuery(input)
+  const days = statsQuery.data?.days ?? []
+  const totalUp = statsQuery.data?.totalUp ?? 0
+  const totalDown = statsQuery.data?.totalDown ?? 0
+  const hasData = days.some((d) => d.upBytes > 0 || d.downBytes > 0)
+  const loading = statsQuery.isPending
+  const error =
+    statsQuery.isError && statsQuery.error instanceof Error
+      ? statsQuery.error.message
+      : null
+  // config key 即 dataKey：tooltip / 图例文案与颜色都从这里取.
+  const chartConfig = {
+    up: { label: t('traffic.up'), color: 'var(--chart-1)' },
+    down: { label: t('traffic.down'), color: 'var(--chart-2)' },
+  } satisfies ChartConfig
+  const chartData = days.map((d) => ({
+    date: d.date,
+    up: d.upBytes,
+    down: d.downBytes,
+  }))
 
   return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>{t('traffic.range')}</Label>
-      <div className="flex gap-1">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger
-            id={id}
-            className={cn(
-              buttonVariants({ variant: 'outline' }),
-              'flex-1 justify-between font-normal',
-              from == null && 'text-muted-foreground',
-            )}
-          >
-            {label ?? <span>{t('traffic.pickRange')}</span>}
-            <CalendarIcon />
-          </PopoverTrigger>
-          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-            <Calendar
-              mode="range"
-              locale={locale}
-              selected={value}
-              defaultMonth={value?.from}
-              captionLayout="dropdown"
-              numberOfMonths={twoMonths ? 2 : 1}
-              onSelect={(range) => {
-                onChange(range)
-                if (range?.from && range?.to) setOpen(false)
-              }}
-            />
-          </PopoverContent>
-        </Popover>
-        {from != null && (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t('traffic.clearRange')}
-            onClick={() => onChange(undefined)}
-          >
-            <X />
-          </Button>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t('traffic.analytics')}</DialogTitle>
+          <DialogDescription>{t('traffic.analyticsDesc')}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="traffic-stats-node">{t('traffic.node')}</Label>
+            <Select
+              value={nodeId || 'all'}
+              items={[
+                { value: 'all', label: t('traffic.all') },
+                ...nodes.map((n) => ({
+                  value: n.id,
+                  label: formatNodeName(n.name, n.countryCode),
+                })),
+              ]}
+              onValueChange={(v) => setNodeId(v === 'all' ? '' : (v ?? ''))}
+            >
+              <SelectTrigger id="traffic-stats-node" className="w-full">
+                <SelectValue placeholder={t('traffic.all')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('traffic.all')}</SelectItem>
+                {nodes.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {formatNodeName(n.name, n.countryCode)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="traffic-stats-user">{t('traffic.user')}</Label>
+            <Select
+              value={nodeUserId || 'all'}
+              items={[
+                { value: 'all', label: t('traffic.all') },
+                ...users.map((u) => ({ value: u.id, label: u.name })),
+              ]}
+              onValueChange={(v) => setNodeUserId(v === 'all' ? '' : (v ?? ''))}
+            >
+              <SelectTrigger id="traffic-stats-user" className="w-full">
+                <SelectValue placeholder={t('traffic.all')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('traffic.all')}</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DateRangeFilter
+          id="traffic-stats-range"
+          value={range}
+          onChange={setRange}
+        />
+
+        {loading && <ChartLoading />}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && !hasData && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            {t('traffic.analyticsEmpty')}
+          </p>
         )}
-      </div>
-    </div>
+        {!loading && !error && hasData && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <p className="text-muted-foreground">
+                {t('traffic.periodUp')}:{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {formatBytes(totalUp)}
+                </span>
+              </p>
+              <p className="text-muted-foreground">
+                {t('traffic.periodDown')}:{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {formatBytes(totalDown)}
+                </span>
+              </p>
+            </div>
+            <ChartContainer config={chartConfig} className="min-h-[280px] w-full">
+              <BarChart accessibilityLayer data={chartData}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={24}
+                  tickFormatter={(v) => String(v).slice(5)}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={52}
+                  tickFormatter={(v) => formatTick(Number(v))}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value) => formatBytes(Number(value))}
+                    />
+                  }
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Bar dataKey="up" fill="var(--color-up)" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="down"
+                  fill="var(--color-down)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -178,6 +270,8 @@ function TrafficPage() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   // 每页条数：改档位回到第一页（游标位置与 limit 强相关，旧栈直接作废）.
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  // 分析弹框开关：条件挂载，打开时继承主表筛选项.
+  const [statsOpen, setStatsOpen] = useState(false)
   const page = cursors.length
   const currentCursor = cursors[cursors.length - 1]
 
@@ -220,15 +314,35 @@ function TrafficPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {t('menu.traffic')}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t('traffic.desc')}
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t('menu.traffic')}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t('traffic.desc')}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="shrink-0"
+          onClick={() => setStatsOpen(true)}
+        >
+          <ChartColumn />
+          {t('traffic.analytics')}
+        </Button>
       </div>
 
+      {statsOpen && (
+        <TrafficStatsDialog
+          nodes={nodes}
+          users={users}
+          initialNodeId={nodeId}
+          initialNodeUserId={nodeUserId}
+          initialRange={range}
+          onClose={() => setStatsOpen(false)}
+        />
+      )}
       <Card>
         <CardHeader>
           <CardTitle>{t('traffic.filterTitle')}</CardTitle>

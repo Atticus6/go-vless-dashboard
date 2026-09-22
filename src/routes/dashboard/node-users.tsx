@@ -1,5 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronDown, Copy, Link2, Pencil, Trash2 } from 'lucide-react'
+import {
+  ChartColumn,
+  ChevronDown,
+  Copy,
+  Link2,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -45,6 +52,7 @@ import {
 } from '@/components/ui/table'
 import { formatNodeName } from '@/lib/country'
 import { TableSkeleton } from '@/components/loading-skeletons'
+import { TrafficBreakdownDialog } from '@/components/traffic-breakdown-dialog'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -320,6 +328,7 @@ function NodeUsersPage() {
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>([])
   const [scopeTarget, setScopeTarget] = useState<NodeUserItem | null>(null)
   const [editScopeNodeIds, setEditScopeNodeIds] = useState<string[]>([])
+  const [statsTarget, setStatsTarget] = useState<NodeUserItem | null>(null)
   const [subTarget, setSubTarget] = useState<NodeUserItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<NodeUserItem | null>(null)
   const [renameTarget, setRenameTarget] = useState<NodeUserItem | null>(null)
@@ -499,6 +508,15 @@ function NodeUsersPage() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          title={t('nodes.analyticsByNode')}
+                          aria-label={t('nodes.analyticsByNode')}
+                          onClick={() => setStatsTarget(u)}
+                        >
+                          <ChartColumn />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           title={t('nodes.nodeUserScopeTitle')}
                           aria-label={t('nodes.nodeUserScopeTitle')}
                           onClick={() => openScopeEditor(u)}
@@ -666,6 +684,17 @@ function NodeUsersPage() {
 
       {subTarget && (
         <UserSubDialog user={subTarget} onClose={() => setSubTarget(null)} />
+      )}
+
+      {statsTarget && (
+        <TrafficBreakdownDialog
+          open
+          onClose={() => setStatsTarget(null)}
+          title={statsTarget.name}
+          description={t('nodes.analyticsByNodeDesc')}
+          mode="node"
+          nodeUserId={statsTarget.id}
+        />
       )}
 
       <AlertDialog

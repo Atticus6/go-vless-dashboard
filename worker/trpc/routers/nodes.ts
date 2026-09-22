@@ -1,5 +1,17 @@
 import { TRPCError } from '@trpc/server'
-import { and, asc, desc, eq, gte, lt, lte, or } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm'
 import {
   node,
   nodeUser,
@@ -20,7 +32,9 @@ import {
   nodeUserScopeInputSchema,
   removeNodesInputSchema,
   reorderNodesInputSchema,
+  trafficBreakdownSchema,
   trafficListInputSchema,
+  trafficStatsInputSchema,
   updateAllBackendsInputSchema,
   updateBackendInputSchema,
   updateBackendsInputSchema,
@@ -76,6 +90,89 @@ function decodeTrafficCursor(cursor: string): { t: number; id: string } {
     // 落到下方统一 400.
   }
   throw new TRPCError({ code: 'BAD_REQUEST', message: 'invalid cursor' })
+}
+
+// 流量查询公共前置：过滤 id 归属校验（跨用户穿透直接 404），
+// trafficStats / trafficBreakdown 共用（trafficList 另有 userId 兜底条件，保持不动）.
+async function assertTrafficFilters(
+  db: Database,
+  me: string,
+  input: { nodeId?: string; nodeUserId?: string },
+) {
+  if (input.nodeId) {
+    const target = await getOwnedNode(db, input.nodeId, me)
+    if (!target) notFound()
+  }
+  if (input.nodeUserId) {
+    const rows = await db
+      .select({ id: nodeUser.id })
+      .from(nodeUser)
+      .where(and(eq(nodeUser.id, input.nodeUserId), eq(nodeUser.userId, me)))
+      .limit(1)
+    if (!rows[0]) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'node user not found',
+      })
+    }
+  }
+}
+
+// 归属收敛（builder 版）：名下节点 id 子查询；分页查询用 IN 代替 JOIN 过滤，
+// 排序走 (recordedAt, id) 索引倒序、LIMIT 提前停；D1 按扫描行计费.
+function ownedNodeIds(db: Database, me: string) {
+  return db.select({ id: node.id }).from(node).where(eq(node.userId, me))
+}
+
+// 归属收敛（raw SQL 版）：聚合查询用，配合 (nodeId, recordedAt) 索引范围扫描；
+// 聚合不再 JOIN node（展示名在外层按分组 probe），只读时间窗内的行.
+function ownedNodeIdsSQL(me: string): SQL {
+  return sql`tr."node_id" IN (SELECT "id" FROM "node" WHERE "user_id" = ${me})`
+}
+
+// 聚合时间窗：缺省近 14 天（含今天），UTC 天对齐，跨度上限 31 天.
+// 返回 baseFromMs（lag 基线多取 1 天）与 toMs（毫秒 unlike trafficList 的 ISO 边界）.
+const STATS_MAX_DAYS = 31
+
+function resolveStatsRange(input: { from?: string; to?: string }) {
+  const DAY = 86400000
+  const to = input.to ? new Date(input.to) : new Date()
+  const from = input.from
+    ? new Date(input.from)
+    : new Date(to.getTime() - 13 * DAY)
+  // 按 UTC 天对齐比较跨度，避免时区边界差一天.
+  const fromDay = Date.UTC(
+    from.getUTCFullYear(),
+    from.getUTCMonth(),
+    from.getUTCDate(),
+  )
+  const toDay = Date.UTC(
+    to.getUTCFullYear(),
+    to.getUTCMonth(),
+    to.getUTCDate(),
+  )
+  if (
+    !Number.isFinite(fromDay) ||
+    !Number.isFinite(toDay) ||
+    fromDay > toDay
+  ) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'invalid range' })
+  }
+  if ((toDay - fromDay) / DAY > STATS_MAX_DAYS - 1) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `range too large (max ${STATS_MAX_DAYS} days)`,
+    })
+  }
+  return {
+    DAY,
+    fromDay,
+    toDay,
+    fromKey: new Date(fromDay).toISOString().slice(0, 10),
+    // lag 基线：往前多取 1 天，前一天无数据时 lag 缺省 0.
+    baseFromMs: fromDay - DAY,
+    toMs: toDay + DAY - 1,
+  }
 }
 
 function toPublic(row: NodeRow): PublicNode {
@@ -930,9 +1027,10 @@ export const nodesRouter = router({
         }
       }
       const limit = input.limit ?? 50
-      // 条件动态叠加：userId 恒为第一条件（归属兜底），其余按传入组装；
-      // 时间字符串已在 schema 层校验为 ISO，这里直接转 Date.
-      const conds = [eq(node.userId, me)]
+      // 条件动态叠加：归属恒为第一条件（名下节点 IN 子查询，404 校验在上），
+      // 其余按传入组装；时间字符串已在 schema 层校验为 ISO，这里直接转 Date.
+      // IN 子查询 + (recordedAt, id) 索引倒序：LIMIT 提前停，只读本页行.
+      const conds = [inArray(trafficRecord.nodeId, ownedNodeIds(db, me))]
       if (input.nodeId) conds.push(eq(trafficRecord.nodeId, input.nodeId))
       if (input.nodeUserId) {
         conds.push(eq(trafficRecord.nodeUserId, input.nodeUserId))
@@ -955,8 +1053,9 @@ export const nodesRouter = router({
         )
       }
       const where = and(...conds)
-      // 联表：node 内连接（记录 nodeId 必填，孤儿行不存在）；
+      // 联表仅取展示列：node 内连接（记录 nodeId 必填，孤儿行不存在）；
       // nodeUser 左连接（上报时未映射或用户已删的行保留，名字为 null）.
+      // 过滤已由 IN 子查询收敛，联表为索引 probe，不参与扫描.
       // 多取 1 条做 hasMore 探针，前端按 nextCursor 翻页.
       const rows = await db
         .select({
@@ -999,5 +1098,167 @@ export const nodesRouter = router({
         nextCursor,
         hasMore,
       }
+    }),
+
+  // 流量按天聚合（归属当前用户）：与 trafficList 同归属校验 + 同过滤，
+  // 上报是累计值（重启清零），故按 (nodeId, nodeUserId) 分组取每日 max，
+  // 再用 lag 差分得到每日增量（计数器回退视为清零，按当日 max 计）；
+  // 缺省近 14 天（含今天），跨度上限 31 天，无数据日期补 0.
+  trafficStats: authedProcedure
+    .input(trafficStatsInputSchema)
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      await assertTrafficFilters(db, me, input)
+      const { DAY, fromDay, toDay, fromKey, baseFromMs, toMs } =
+        resolveStatsRange(input)
+      // 归属收敛走 IN 子查询（(nodeId, recordedAt) 索引范围扫描），不 JOIN node.
+      const conds = [ownedNodeIdsSQL(me)]
+      if (input.nodeId) conds.push(sql`tr."node_id" = ${input.nodeId}`)
+      if (input.nodeUserId) {
+        conds.push(sql`tr."node_user_id" = ${input.nodeUserId}`)
+      }
+      const where = sql.join(conds, sql` AND `)
+      const rows = await db.all<{
+        date: string
+        upBytes: number
+        downBytes: number
+      }>(sql`
+        WITH daily AS (
+          SELECT date(tr."recorded_at" / 1000, 'unixepoch') AS d,
+                 tr."node_id" AS node_id,
+                 tr."node_user_id" AS node_user_id,
+                 max(tr."up_bytes") AS up,
+                 max(tr."down_bytes") AS down
+          FROM "traffic_record" tr
+          WHERE ${where}
+            AND tr."recorded_at" >= ${baseFromMs}
+            AND tr."recorded_at" <= ${toMs}
+          GROUP BY d, tr."node_id", tr."node_user_id"
+        ),
+        diff AS (
+          SELECT d,
+            CASE WHEN up - lag(up, 1, 0) OVER w < 0 THEN up
+                 ELSE up - lag(up, 1, 0) OVER w END AS up_use,
+            CASE WHEN down - lag(down, 1, 0) OVER w < 0 THEN down
+                 ELSE down - lag(down, 1, 0) OVER w END AS down_use
+          FROM daily
+          WINDOW w AS (PARTITION BY node_id, node_user_id ORDER BY d)
+        )
+        SELECT d AS date,
+               CAST(sum(up_use) AS INTEGER) AS upBytes,
+               CAST(sum(down_use) AS INTEGER) AS downBytes
+        FROM diff
+        WHERE d >= ${fromKey}
+        GROUP BY d
+        ORDER BY d
+      `)
+      // 无数据日期补 0，保证柱状图横轴连续.
+      const byDate = new Map(rows.map((r) => [r.date, r]))
+      const days: Array<{ date: string; upBytes: number; downBytes: number }> =
+        []
+      let totalUp = 0
+      let totalDown = 0
+      for (let t = fromDay; t <= toDay; t += DAY) {
+        const key = new Date(t).toISOString().slice(0, 10)
+        const r = byDate.get(key)
+        const upBytes = Number(r?.upBytes ?? 0)
+        const downBytes = Number(r?.downBytes ?? 0)
+        days.push({ date: key, upBytes, downBytes })
+        totalUp += upBytes
+        totalDown += downBytes
+      }
+      return { days, totalUp, totalDown }
+    }),
+
+  // 流量分组汇总（归属当前用户）：by=user 按节点用户分（某节点下各用户用量），
+  // by=node 按节点分（某用户在各节点用量）；差分语义与 trafficStats 一致，
+  // 外层再按目标维度汇总；总量倒序；未关联行 id/name 为 null.
+  trafficBreakdown: authedProcedure
+    .input(trafficBreakdownSchema)
+    .query(async ({ ctx, input }) => {
+      const db = ctx.db
+      const me = ctx.session.user.id
+      await assertTrafficFilters(db, me, input)
+      const { fromKey, baseFromMs, toMs } = resolveStatsRange(input)
+      // 归属收敛走 IN 子查询（(nodeId, recordedAt) 索引范围扫描），不 JOIN node；
+      // 展示名在外层按分组 probe（n2 / nu），聚合只读窗内行.
+      const conds = [ownedNodeIdsSQL(me)]
+      if (input.nodeId) conds.push(sql`tr."node_id" = ${input.nodeId}`)
+      if (input.nodeUserId) {
+        conds.push(sql`tr."node_user_id" = ${input.nodeUserId}`)
+      }
+      const where: SQL = sql.join(conds, sql` AND `)
+      // CTE 内仍按 (node, user) 细粒度差分，外层按目标维度汇总，保证可加性.
+      // summed 的源是 diff（列为 node_id / node_user_id），此处不能带 tr. 前缀.
+      const gid =
+        input.by === 'user' ? sql`node_user_id` : sql`node_id`
+      const nameSelect =
+        input.by === 'user'
+          ? sql`SELECT s.gid AS id, nu."name" AS name,
+                       CAST(NULL AS TEXT) AS countryCode,
+                       CAST(s.up_sum AS INTEGER) AS upBytes,
+                       CAST(s.down_sum AS INTEGER) AS downBytes
+                FROM summed s
+                LEFT JOIN "node_user" nu ON s.gid = nu."id"`
+          : sql`SELECT s.gid AS id, n2."name" AS name,
+                       n2."country_code" AS countryCode,
+                       CAST(s.up_sum AS INTEGER) AS upBytes,
+                       CAST(s.down_sum AS INTEGER) AS downBytes
+                FROM summed s
+                INNER JOIN "node" n2 ON s.gid = n2."id"`
+      const rows = await db.all<{
+        id: string | null
+        name: string | null
+        countryCode: string | null
+        upBytes: number
+        downBytes: number
+      }>(sql`
+        WITH daily AS (
+          SELECT date(tr."recorded_at" / 1000, 'unixepoch') AS d,
+                 tr."node_id" AS node_id,
+                 tr."node_user_id" AS node_user_id,
+                 max(tr."up_bytes") AS up,
+                 max(tr."down_bytes") AS down
+          FROM "traffic_record" tr
+          WHERE ${where}
+            AND tr."recorded_at" >= ${baseFromMs}
+            AND tr."recorded_at" <= ${toMs}
+          GROUP BY d, tr."node_id", tr."node_user_id"
+        ),
+        diff AS (
+          SELECT d, node_id, node_user_id,
+            CASE WHEN up - lag(up, 1, 0) OVER w < 0 THEN up
+                 ELSE up - lag(up, 1, 0) OVER w END AS up_use,
+            CASE WHEN down - lag(down, 1, 0) OVER w < 0 THEN down
+                 ELSE down - lag(down, 1, 0) OVER w END AS down_use
+          FROM daily
+          WINDOW w AS (PARTITION BY node_id, node_user_id ORDER BY d)
+        ),
+        summed AS (
+          SELECT ${gid} AS gid, sum(up_use) AS up_sum, sum(down_use) AS down_sum
+          FROM diff
+          WHERE d >= ${fromKey}
+          GROUP BY gid
+        )
+        ${nameSelect}
+        ORDER BY (up_sum + down_sum) DESC
+      `)
+      let totalUp = 0
+      let totalDown = 0
+      const groups = rows.map((r) => {
+        const upBytes = Number(r.upBytes ?? 0)
+        const downBytes = Number(r.downBytes ?? 0)
+        totalUp += upBytes
+        totalDown += downBytes
+        return {
+          id: r.id,
+          name: r.name,
+          countryCode: r.countryCode,
+          upBytes,
+          downBytes,
+        }
+      })
+      return { groups, totalUp, totalDown }
     }),
 })

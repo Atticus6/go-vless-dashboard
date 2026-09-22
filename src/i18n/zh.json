@@ -220,7 +220,10 @@
     "updateAllDesc": "将通知全部在线节点更新到最新版，节点会下载替换并重启，期间短暂离线。离线节点跳过，可稍后单独更新。",
     "updateAllStarted": "已通知 {{count}} 个节点",
     "updateAllFailed": "{{count}} 个失败：{{names}}",
-    "updateAllSkipped": "{{count}} 个离线跳过：{{names}}"
+    "updateAllSkipped": "{{count}} 个离线跳过：{{names}}",
+    "analyticsByUserDesc": "该节点下各用户的用量汇总（累计值差分，跨度上限 31 天）。",
+    "analyticsByNode": "按节点查看流量",
+    "analyticsByNodeDesc": "该用户在各节点的用量汇总（累计值差分，跨度上限 31 天）。"
   },
   "traffic": {
     "desc": "后端用户流量的周期快照（按记录时间倒序）。",
@@ -240,7 +243,13 @@
     "unlinked": "未关联用户",
     "page": "第 {{page}} 页 · 本页 {{size}} 条",
     "perPage": "每页",
+    "analytics": "流量分析",
+    "analyticsDesc": "按天汇总所选范围的上行 / 下行用量（累计值差分，跨度上限 31 天）。",
+    "analyticsEmpty": "所选范围暂无流量数据",
+    "periodUp": "期间上行",
+    "periodDown": "期间下行",
     "prev": "上一页",
-    "next": "下一页"
+    "next": "下一页",
+    "other": "其他"
   }
 }

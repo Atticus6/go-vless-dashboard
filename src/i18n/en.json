@@ -220,7 +220,10 @@
     "updateAllDesc": "All online nodes will update to the latest version, download, replace and restart with brief downtime. Offline nodes are skipped and can be updated individually later.",
     "updateAllStarted": "{{count}} node(s) notified",
     "updateAllFailed": "{{count}} failed: {{names}}",
-    "updateAllSkipped": "{{count}} offline skipped: {{names}}"
+    "updateAllSkipped": "{{count}} offline skipped: {{names}}",
+    "analyticsByUserDesc": "Per-user usage on this node (cumulative diffs, max 31 days).",
+    "analyticsByNode": "Usage by node",
+    "analyticsByNodeDesc": "Per-node usage of this user (cumulative diffs, max 31 days)."
   },
   "traffic": {
     "desc": "Periodic snapshots of backend user traffic (newest first).",
@@ -240,7 +243,13 @@
     "unlinked": "Unlinked",
     "page": "Page {{page}} · {{size}} shown",
     "perPage": "Per page",
+    "analytics": "Analytics",
+    "analyticsDesc": "Daily up/down totals for the selected filters (max 31 days).",
+    "analyticsEmpty": "No traffic data in this range",
+    "periodUp": "Total up",
+    "periodDown": "Total down",
     "prev": "Prev",
-    "next": "Next"
+    "next": "Next",
+    "other": "Other"
   }
 }
