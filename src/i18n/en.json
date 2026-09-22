@@ -238,7 +238,8 @@
     "total": "Total",
     "empty": "No traffic records yet",
     "unlinked": "Unlinked",
-    "count": "{{count}} record(s)",
+    "page": "Page {{page}} · {{size}} shown",
+    "perPage": "Per page",
     "prev": "Prev",
     "next": "Next"
   }

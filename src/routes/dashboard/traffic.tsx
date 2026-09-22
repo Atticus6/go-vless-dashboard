@@ -41,7 +41,7 @@ import { TableSkeleton } from '@/components/loading-skeletons'
 import { trpc } from '@/lib/trpc'
 import type { RouterOutputs } from '@/lib/trpc'
 
-// 流量记录查询页：筛选（节点 / 用户 / 日期范围）+ 记录表 + 分页.
+// 流量记录查询页：筛选（节点 / 用户 / 日期范围）+ 记录表 + cursor 分页.
 // 数据来自 nodes.trafficList（后端定时上报的快照），空表显示空状态.
 export const Route = createFileRoute('/dashboard/traffic')({
   component: TrafficPage,
@@ -51,8 +51,10 @@ export const Route = createFileRoute('/dashboard/traffic')({
 type TrafficRecordItem =
   RouterOutputs['nodes']['trafficList']['records'][number]
 
-// 每页条数：与后端 trafficList 默认 limit 对齐，前后端改一边要同步另一边.
-const PAGE_SIZE = 50
+// 每页条数：默认 20（表行高，50 一屏太满）；与后端 trafficList 默认 limit 对齐，
+// 后端上限 200，前端档位不超过 100.
+const DEFAULT_PAGE_SIZE = 10
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
 // 字节数格式化（B/KB/MB/GB/TB，两位小数），展示用.
 function formatBytes(n: number): string {
@@ -171,8 +173,13 @@ function TrafficPage() {
   const [nodeId, setNodeId] = useState('')
   const [nodeUserId, setNodeUserId] = useState('')
   const [range, setRange] = useState<DateRange | undefined>(undefined)
-  // 分页状态：页码从 0 起，offset = page * PAGE_SIZE.
-  const [page, setPage] = useState(0)
+  // cursor 分页状态：栈存每页入口游标，首页为 undefined；
+  // 下一页压入本页返回的 nextCursor，上一页弹出栈顶（后端只做向前翻页）.
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
+  // 每页条数：改档位回到第一页（游标位置与 limit 强相关，旧栈直接作废）.
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const page = cursors.length
+  const currentCursor = cursors[cursors.length - 1]
 
   // 下拉选项数据：节点列表与节点用户列表（与节点用户页同源）.
   const nodesQuery = trpc.nodes.list.useQuery()
@@ -182,6 +189,7 @@ function TrafficPage() {
 
   // 查询入参：useMemo 定住引用，避免每次渲染触发重复请求；
   // 空筛选转 undefined（后端视为不限），日期按天边界换算成 ISO.
+  // cursor 取栈顶（首页为 undefined），改过滤时栈已重置.
   const input = useMemo(
     () => ({
       nodeId: nodeId || undefined,
@@ -189,25 +197,25 @@ function TrafficPage() {
       from: startOfDayISO(range?.from),
       // 仅选 from 时按单天查.
       to: endOfDayISO(range?.to ?? range?.from),
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+      limit: pageSize,
+      cursor: currentCursor,
     }),
-    [nodeId, nodeUserId, range, page],
+    [nodeId, nodeUserId, range, pageSize, currentCursor],
   )
   const listQuery = trpc.nodes.trafficList.useQuery(input)
   const records: TrafficRecordItem[] = listQuery.data?.records ?? []
-  const total = listQuery.data?.total ?? 0
-  // 总页数：total 为 0 时保底 1 页，避免下一页按钮状态异常.
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const hasMore = listQuery.data?.hasMore ?? false
+  const nextCursor = listQuery.data?.nextCursor ?? null
   const loading = listQuery.isPending
+  const fetching = listQuery.isFetching
   const error =
     listQuery.isError && listQuery.error instanceof Error
       ? listQuery.error.message
       : null
 
-  // 筛选变化统一回到第一页：旧页码可能超出新结果范围.
+  // 筛选变化统一回到第一页：旧游标栈在新过滤下无意义.
   function resetPage() {
-    setPage(0)
+    setCursors([undefined])
   }
 
   return (
@@ -362,26 +370,55 @@ function TrafficPage() {
         </Card>
       )}
 
-      {/* 分页条：无记录时不展示；边界页按钮禁用防越界. */}
-      {!loading && !error && total > 0 && (
-        <div className="flex items-center justify-between">
+      {/* 分页条：cursor 无总数，展示当前页码与本页条数；首页且空记录时不展示. */}
+      {!loading && !error && (records.length > 0 || cursors.length > 1) && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {t('traffic.count', { count: total })}
+            {t('traffic.page', { page, size: records.length })}
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {t('traffic.perPage')}
+            </span>
+            <Select
+              value={String(pageSize)}
+              items={PAGE_SIZE_OPTIONS.map((n) => ({
+                value: String(n),
+                label: String(n),
+              }))}
+              onValueChange={(v) => {
+                const n = Number(v)
+                if (!Number.isInteger(n) || n <= 0) return
+                setPageSize(n)
+                setCursors([undefined])
+              }}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="sm"
-              disabled={page <= 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={cursors.length <= 1 || fetching}
+              onClick={() => setCursors((prev) => prev.slice(0, -1))}
             >
               {t('traffic.prev')}
             </Button>
             <Button
               variant="outline"
               size="sm"
-              disabled={page + 1 >= pageCount}
-              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasMore || !nextCursor || fetching}
+              onClick={() => {
+                if (nextCursor) setCursors((prev) => [...prev, nextCursor])
+              }}
             >
               {t('traffic.next')}
             </Button>

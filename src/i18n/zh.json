@@ -238,7 +238,8 @@
     "total": "合计",
     "empty": "暂无流量记录",
     "unlinked": "未关联用户",
-    "count": "共 {{count}} 条",
+    "page": "第 {{page}} 页 · 本页 {{size}} 条",
+    "perPage": "每页",
     "prev": "上一页",
     "next": "下一页"
   }

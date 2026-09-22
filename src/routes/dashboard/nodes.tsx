@@ -29,10 +29,8 @@ import {
   Terminal,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react'
-import { useEffect, useId, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { formatNodeName } from '@/lib/country'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -106,8 +104,6 @@ import { trpc } from '@/lib/trpc'
 import {
   buildVlessLink,
   hostnameOf,
-  type VlessNetwork,
-  type VlessSecurity,
 } from '@/lib/vless'
 import type { RouterOutputs } from '@/lib/trpc'
 
@@ -1357,7 +1353,7 @@ function CopyVlessDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t('nodes.copySubscription')}</DialogTitle>
           <DialogDescription>
@@ -1382,9 +1378,9 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
   const selected = nodeUsers.find((u) => u.id === nodeUserId) ?? null
   const token = selected?.token ?? ''
 
-  // 单用户时自动选中。
+  // 默认选中第一个用户，免去每次手动选 UUID；用户手动切换后不再覆盖.
   useEffect(() => {
-    if (!nodeUserId && nodeUsers.length === 1 && nodeUsers[0]) {
+    if (!nodeUserId && nodeUsers.length > 0 && nodeUsers[0]) {
       setNodeUserId(nodeUsers[0].id)
     }
   }, [nodeUserId, nodeUsers])
@@ -1398,10 +1394,6 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
   }, [item])
 
   const [manualAddress, setManualAddress] = useState('')
-  const [qrTarget, setQrTarget] = useState<{
-    host: string
-    link: string
-  } | null>(null)
 
   // 有上报地址就每个出一项；一个都没上报（离线/未注册）时可用手动地址补一项。
   const effectiveHosts =
@@ -1412,7 +1404,7 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
         : []
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div className="grid gap-2">
         <Label htmlFor="vless-user">{t('nodes.subUuid')}</Label>
         {listQuery.isPending ? (
@@ -1461,11 +1453,14 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
       )}
 
       {selected && effectiveHosts.length > 0 ? (
-        <Accordion defaultValue={[effectiveHosts[0] ?? '']}>
+        // 默认全部折叠：地址多时先看清单，点哪个展开哪个.
+        <Accordion>
           {effectiveHosts.map((host, index) => (
             <AccordionItem key={host} value={host}>
               <AccordionTrigger>
-                <span className="truncate font-mono text-xs">{host}</span>
+                <span className="min-w-0 flex-1 truncate text-left font-mono text-xs">
+                  {host}
+                </span>
               </AccordionTrigger>
               <AccordionContent>
                 <VlessDetail
@@ -1479,7 +1474,6 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
                       ? `${formatNodeName(item.name, item.countryCode)}-${index + 1}`
                       : formatNodeName(item.name, item.countryCode)
                   }
-                  onShowQr={(link) => setQrTarget({ host, link })}
                 />
               </AccordionContent>
             </AccordionItem>
@@ -1494,7 +1488,6 @@ function CopyVlessBody({ item }: { item: NodeItem }) {
         </div>
       )}
 
-      <QrDialog target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   )
 }
@@ -1505,46 +1498,27 @@ function VlessDetail({
   host,
   token,
   defaultRemark,
-  onShowQr,
 }: {
   nodeId: string
   nodeUserId: string
   host: string
   token: string
   defaultRemark: string
-  onShowQr: (link: string) => void
 }) {
   const { t } = useTranslation()
-  const uid = useId()
-  const [port, setPort] = useState('443')
-  const [security, setSecurity] = useState<VlessSecurity>('tls')
-  const [network, setNetwork] = useState<VlessNetwork>('ws')
-  const [path, setPath] = useState('/')
-  const [hostHeader, setHostHeader] = useState('')
-  const [fp, setFp] = useState('chrome')
-  const [sni, setSni] = useState('')
-  const [remark, setRemark] = useState(defaultRemark)
-
   const ensure = trpc.nodes.nodeUserEnsure.useMutation()
-
-  // HOST / SNI 为空时跟随本地址。
-  const resolvedHost = hostHeader.trim() || host
-  const resolvedSni = sni.trim() || host
-  const ready = port.trim() !== ''
-  const link = ready
-    ? buildVlessLink({
-        uuid: token,
-        address: host,
-        port: port.trim(),
-        security,
-        network,
-        path,
-        host: resolvedHost,
-        fp,
-        sni: resolvedSni,
-        remark: remark.trim() || defaultRemark,
-      })
-    : ''
+  const link = buildVlessLink({
+    uuid: token,
+    address: host,
+    port: '443',
+    security: 'tls',
+    network: 'ws',
+    path: '/',
+    host,
+    fp: 'chrome',
+    sni: host,
+    remark: defaultRemark,
+  })
 
   async function handleCopy() {
     if (!link) return
@@ -1558,229 +1532,25 @@ function VlessDetail({
     }
   }
 
-  async function handleShowQr() {
-    if (!link) return
-    try {
-      await ensure.mutateAsync({ id: nodeId, nodeUserId })
-      onShowQr(link)
-    } catch {
-      toast.error(t('nodes.installCmdCopyFailed'))
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-port`}>{t('nodes.subPort')}</Label>
-          <Input
-            id={`${uid}-port`}
-            value={port}
-            onChange={(event) => setPort(event.target.value)}
-            placeholder="443"
-            inputMode="numeric"
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-fp`}>{t('nodes.subFp')}</Label>
-          <Select
-            value={fp}
-            onValueChange={(value) => setFp(value ?? 'chrome')}
-          >
-            <SelectTrigger
-              id={`${uid}-fp`}
-              className="w-full font-mono text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="chrome">chrome</SelectItem>
-              <SelectItem value="firefox">firefox</SelectItem>
-              <SelectItem value="safari">safari</SelectItem>
-              <SelectItem value="edge">edge</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="flex flex-col items-center gap-3">
+      <div className="rounded-xl bg-white p-3">
+        <QRCodeSVG value={link} size={192} level="M" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-security`}>
-            {t('nodes.subSecurity')}
-          </Label>
-          <Select
-            value={security}
-            onValueChange={(value) =>
-              setSecurity(value as VlessSecurity)
-            }
-          >
-            <SelectTrigger id={`${uid}-security`} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tls">tls</SelectItem>
-              <SelectItem value="none">none</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-network`}>
-            {t('nodes.subNetwork')}
-          </Label>
-          <Select
-            value={network}
-            onValueChange={(value) => setNetwork(value as VlessNetwork)}
-          >
-            <SelectTrigger id={`${uid}-network`} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ws">ws</SelectItem>
-              <SelectItem value="tcp">tcp</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      {network === 'ws' && (
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-path`}>{t('nodes.subPath')}</Label>
-          <Input
-            id={`${uid}-path`}
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-            placeholder="/"
-            className="font-mono text-xs"
-          />
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-wshost`}>
-            {t('nodes.subHostHeader')}
-          </Label>
-          <Input
-            id={`${uid}-wshost`}
-            value={hostHeader}
-            onChange={(event) => setHostHeader(event.target.value)}
-            placeholder={host}
-            className="font-mono text-xs"
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${uid}-sni`}>{t('nodes.subSni')}</Label>
-          <Input
-            id={`${uid}-sni`}
-            value={sni}
-            onChange={(event) => setSni(event.target.value)}
-            placeholder={host}
-            className="font-mono text-xs"
-          />
-        </div>
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor={`${uid}-remark`}>{t('nodes.subRemark')}</Label>
-        <Input
-          id={`${uid}-remark`}
-          value={remark}
-          onChange={(event) => setRemark(event.target.value)}
-          maxLength={64}
-        />
-      </div>
-      {link && (
-        <p className="rounded-lg bg-muted p-2.5 font-mono text-xs break-all">
-          {link}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          disabled={!ready || ensure.isPending}
-          onClick={() => void handleCopy()}
-          className="flex-1"
-        >
-          {(ensure.isPending) && <Spinner className="size-3.5" />}
-          <Copy />
-          {t('nodes.subCopyLink')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!ready || ensure.isPending}
-          onClick={() => void handleShowQr()}
-          className="flex-1"
-        >
-          <QrCode />
-          {t('nodes.subQrCode')}
-        </Button>
-      </div>
+      <p className="w-full rounded-lg bg-muted p-2.5 font-mono text-xs break-all">
+        {link}
+      </p>
+      <Button
+        size="sm"
+        disabled={ensure.isPending}
+        onClick={() => void handleCopy()}
+        className="w-full"
+      >
+        {ensure.isPending && <Spinner className="size-3.5" />}
+        <Copy />
+        {t('nodes.subCopyLink')}
+      </Button>
     </div>
-  )
-}
-
-function QrDialog({
-  target,
-  onClose,
-}: {
-  target: { host: string; link: string } | null
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  // Esc 关闭（灯箱直挂 body，不经过 Dialog 嵌套）。
-  useEffect(() => {
-    if (!target) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [target, onClose])
-
-  async function handleCopy() {
-    if (!target) return
-    try {
-      await navigator.clipboard.writeText(target.link)
-      toast.success(t('nodes.subLinkCopied'))
-    } catch {
-      toast.error(t('nodes.installCmdCopyFailed'))
-    }
-  }
-
-  if (!target) return null
-
-  // 轻量灯箱：flex 居中保证位置，无灰色遮罩层，点击空白处关闭。
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={target.host}
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-    >
-      <button
-        aria-label={t('nodes.cancel')}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default bg-transparent"
-      />
-      <div className="relative flex w-full max-w-xs flex-col items-center gap-4 rounded-xl bg-popover p-6 text-popover-foreground ring-1 ring-foreground/10">
-        <button
-          aria-label={t('nodes.cancel')}
-          onClick={onClose}
-          className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-        >
-          <X className="size-4" />
-        </button>
-        <p className="w-full truncate text-center font-mono text-sm">
-          {target.host}
-        </p>
-        <div className="rounded-xl bg-white p-4">
-          <QRCodeSVG value={target.link} size={256} level="M" />
-        </div>
-        <Button onClick={() => void handleCopy()} className="w-full">
-          <Copy />
-          {t('nodes.subCopyLink')}
-        </Button>
-      </div>
-    </div>,
-    document.body,
   )
 }
 

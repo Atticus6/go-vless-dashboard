@@ -207,9 +207,11 @@ export const subQueryInputSchema = subQuerySchema.extend({
   format: subFormatSchema.optional(),
 })
 
-// 流量记录查询：全部可选过滤（节点 / 节点用户 / 时间范围）+ 分页.
+// 流量记录查询：全部可选过滤（节点 / 节点用户 / 时间范围）+ keyset cursor 分页.
 // 时间走 ISO 字符串（tRPC 走 JSON，Date 会变字符串，索性显式收字符串），
 // router 内转 Date；归属校验在 router 做（过滤 id 必须属于当前用户）。
+// cursor 为不透明游标（后端编码 recordedAt+id），前端透传不解析；
+// 第一页不传 cursor，下一页传上一页返回的 nextCursor；改任一过滤要从头查.
 // limit 上限 200，默认 50，与查询页 PAGE_SIZE 对齐.
 export const trafficListInputSchema = z.object({
   nodeId: nodeIdSchema.optional(),
@@ -217,7 +219,7 @@ export const trafficListInputSchema = z.object({
   from: z.iso.datetime({ offset: true }).optional(),
   to: z.iso.datetime({ offset: true }).optional(),
   limit: z.number().int().min(1).max(200).optional(),
-  offset: z.number().int().min(0).optional(),
+  cursor: z.string().min(1).max(256).optional(),
 })
 
 // 后端流量上报请求体（公开接口，靠节点 id + key 鉴权）：

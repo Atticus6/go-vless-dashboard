@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { and, asc, count, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, lt, lte, or } from 'drizzle-orm'
 import {
   node,
   nodeUser,
@@ -45,6 +45,37 @@ function toISO(value: Date | string | number): string {
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'number') return new Date(value).toISOString()
   return value
+}
+
+function toMillis(value: Date | string | number): number {
+  if (value instanceof Date) return value.getTime()
+  if (typeof value === 'number') return value
+  return new Date(value).getTime()
+}
+
+// 流量游标编解码：不透明 base64(JSON { t: recordedAt毫秒, id })，前端透传不解析.
+// router 只跑在 Workers 侧，btoa/atob 原生可用（与 notify.ts 一致，直接裸用）；
+// id 为 ascii hex，JSON 全 ascii，无需 TextEncoder.
+function encodeTrafficCursor(recordedAtMs: number, id: string): string {
+  return btoa(JSON.stringify({ t: recordedAtMs, id }))
+}
+
+function decodeTrafficCursor(cursor: string): { t: number; id: string } {
+  try {
+    const raw = atob(cursor)
+    const v = JSON.parse(raw) as { t?: unknown; id?: unknown }
+    if (
+      typeof v.t === 'number' &&
+      Number.isFinite(v.t) &&
+      typeof v.id === 'string' &&
+      v.id.length > 0
+    ) {
+      return { t: v.t, id: v.id }
+    }
+  } catch {
+    // 落到下方统一 400.
+  }
+  throw new TRPCError({ code: 'BAD_REQUEST', message: 'invalid cursor' })
 }
 
 function toPublic(row: NodeRow): PublicNode {
@@ -865,9 +896,13 @@ export const nodesRouter = router({
     }),
 
   // 流量记录查询（归属当前用户）：按节点 / 节点用户 / 时间范围过滤，
-  // 时间倒序 + 分页；nodeUser 已删除的行 nodeUserName 为 null 照常返回.
+  // 时间倒序 + keyset cursor 分页；nodeUser 已删除的行 nodeUserName 为 null 照常返回.
+  // 排序键为 (recordedAt DESC, id DESC)，游标为上一页最后一条的 (t, id)；
+  // 下一页条件：recordedAt < t OR (recordedAt = t AND id < cursorId)，避免
+  // 同毫秒多行（同一批次上报时间戳一致）丢行或重行；非法游标直接 400.
   // 过滤 id 先做归属校验（跨用户 id 穿透直接 404），再叠加 userId 兜底条件，
   // 双保险：即使过滤缺失也只能看到名下节点的记录.
+  // 返回 limit+1 探针判断 hasMore，不做 count（大表 count 贵且插入时漂移）.
   trafficList: authedProcedure
     .input(trafficListInputSchema)
     .query(async ({ ctx, input }) => {
@@ -895,7 +930,6 @@ export const nodesRouter = router({
         }
       }
       const limit = input.limit ?? 50
-      const offset = input.offset ?? 0
       // 条件动态叠加：userId 恒为第一条件（归属兜底），其余按传入组装；
       // 时间字符串已在 schema 层校验为 ISO，这里直接转 Date.
       const conds = [eq(node.userId, me)]
@@ -909,40 +943,49 @@ export const nodesRouter = router({
       if (input.to) {
         conds.push(lte(trafficRecord.recordedAt, new Date(input.to)))
       }
+      // keyset 游标条件：排序 (recordedAt DESC, id DESC) 的严格下一页.
+      if (input.cursor) {
+        const c = decodeTrafficCursor(input.cursor)
+        const t = new Date(c.t)
+        conds.push(
+          or(
+            lt(trafficRecord.recordedAt, t),
+            and(eq(trafficRecord.recordedAt, t), lt(trafficRecord.id, c.id)),
+          )!,
+        )
+      }
       const where = and(...conds)
       // 联表：node 内连接（记录 nodeId 必填，孤儿行不存在）；
       // nodeUser 左连接（上报时未映射或用户已删的行保留，名字为 null）.
-      const joinNode = () =>
-        db
-          .select({
-            id: trafficRecord.id,
-            nodeId: trafficRecord.nodeId,
-            nodeName: node.name,
-            nodeCountryCode: node.countryCode,
-            nodeUserId: trafficRecord.nodeUserId,
-            nodeUserName: nodeUser.name,
-            upBytes: trafficRecord.upBytes,
-            downBytes: trafficRecord.downBytes,
-            recordedAt: trafficRecord.recordedAt,
-          })
-          .from(trafficRecord)
-          .innerJoin(node, eq(trafficRecord.nodeId, node.id))
-          .leftJoin(nodeUser, eq(trafficRecord.nodeUserId, nodeUser.id))
-      // 总数与分页一次并行查出：总数供前端算页数，分页按记录时间倒序.
-      const [totalRows, rows] = await Promise.all([
-        db
-          .select({ value: count() })
-          .from(trafficRecord)
-          .innerJoin(node, eq(trafficRecord.nodeId, node.id))
-          .where(where),
-        joinNode()
-          .where(where)
-          .orderBy(desc(trafficRecord.recordedAt))
-          .limit(limit)
-          .offset(offset),
-      ])
+      // 多取 1 条做 hasMore 探针，前端按 nextCursor 翻页.
+      const rows = await db
+        .select({
+          id: trafficRecord.id,
+          nodeId: trafficRecord.nodeId,
+          nodeName: node.name,
+          nodeCountryCode: node.countryCode,
+          nodeUserId: trafficRecord.nodeUserId,
+          nodeUserName: nodeUser.name,
+          upBytes: trafficRecord.upBytes,
+          downBytes: trafficRecord.downBytes,
+          recordedAt: trafficRecord.recordedAt,
+        })
+        .from(trafficRecord)
+        .innerJoin(node, eq(trafficRecord.nodeId, node.id))
+        .leftJoin(nodeUser, eq(trafficRecord.nodeUserId, nodeUser.id))
+        .where(where)
+        .orderBy(desc(trafficRecord.recordedAt), desc(trafficRecord.id))
+        .limit(limit + 1)
+      const hasMore = rows.length > limit
+      const pageRows = hasMore ? rows.slice(0, limit) : rows
+      // nextCursor 取本页最后一条（recordedAt 转毫秒 + id），无下一页为 null.
+      const last = pageRows[pageRows.length - 1]
+      const nextCursor =
+        hasMore && last
+          ? encodeTrafficCursor(toMillis(last.recordedAt), last.id)
+          : null
       return {
-        records: rows.map((r) => ({
+        records: pageRows.map((r) => ({
           id: r.id,
           nodeId: r.nodeId,
           nodeName: r.nodeName,
@@ -953,7 +996,8 @@ export const nodesRouter = router({
           downBytes: r.downBytes,
           recordedAt: r.recordedAt ? toISO(r.recordedAt) : null,
         })),
-        total: totalRows[0]?.value ?? 0,
+        nextCursor,
+        hasMore,
       }
     }),
 })

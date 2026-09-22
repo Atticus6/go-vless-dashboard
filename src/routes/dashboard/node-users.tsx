@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
@@ -272,6 +273,47 @@ function ScopePicker({
   )
 }
 
+// 可用节点列展示：徽章换行排列，超过上限收进 +N（title 悬停看全量），
+// 避免 join 长串把表格撑出横向滚动；空数组 = 全部节点.
+const SCOPE_BADGE_MAX = 3
+
+function ScopeBadges({
+  names,
+  allLabel,
+}: {
+  names: string[]
+  allLabel: string
+}) {
+  if (names.length === 0) {
+    return <span className="text-sm text-muted-foreground">{allLabel}</span>
+  }
+  const shown = names.slice(0, SCOPE_BADGE_MAX)
+  const rest = names.slice(SCOPE_BADGE_MAX)
+  return (
+    <span className="flex max-w-80 flex-wrap gap-1">
+      {shown.map((name) => (
+        <Badge
+          key={name}
+          variant="secondary"
+          title={name}
+          className="max-w-44 truncate font-normal"
+        >
+          {name}
+        </Badge>
+      ))}
+      {rest.length > 0 && (
+        <Badge
+          variant="outline"
+          title={names.join('、')}
+          className="font-normal"
+        >
+          +{rest.length}
+        </Badge>
+      )}
+    </span>
+  )
+}
+
 function NodeUsersPage() {
   const { t } = useTranslation()
   const [name, setName] = useState('')
@@ -446,10 +488,11 @@ function NodeUsersPage() {
                     <TableCell className="font-mono text-xs break-all">
                       {u.token}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {u.nodeNames.length > 0
-                        ? u.nodeNames.join('、')
-                        : t('nodes.scopeAll')}
+                    <TableCell>
+                      <ScopeBadges
+                        names={u.nodeNames}
+                        allLabel={t('nodes.scopeAll')}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

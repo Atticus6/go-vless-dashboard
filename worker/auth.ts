@@ -10,11 +10,15 @@ import { generateId } from '!/lib/utils'
 // Worker 里不能用模块级单例）。Schema 生成走
 // worker/auth-schema.config.ts（保持同步）。
 export function createAuth(env: Env, db: Database) {
+  const allowedHosts = ["*.workers.dev"];
+  if (env.DOMAIN) {
+    allowedHosts.push(env.DOMAIN);
+  }
   return betterAuth({
     // 同源多 host（本地 dev / workers.dev / 预览域名）：按请求 host 动态解析，
     // 未知 host 直接抛错而不静默回退；protocol auto 让 http(s)/Secure cookie 跟随请求。
     baseURL: {
-      allowedHosts: ['localhost:*', '127.0.0.1:*', '*.workers.dev'],
+      allowedHosts,
       protocol: 'auto',
     },
     database: drizzleAdapter(db, {
