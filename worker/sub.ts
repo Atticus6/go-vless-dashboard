@@ -7,6 +7,7 @@ import {
   buildSubClashYamlUnified,
   buildSubEntries,
   DEFAULT_FRONT_PATTERNS,
+  detectDeviceType,
   detectSubFormat,
   formatSubBody,
   resolveSubParams,
@@ -123,7 +124,7 @@ const subApp = factory
       );
       if (entries.length === 0) return c.text("no nodes available", 404);
       // 订阅被成功拉取：异步通知属主（waitUntil 不阻塞本次返回；未配通知静默跳过）.
-      // 归属地取自 request.cf（边缘节点注入的国家/城市），不展示客户端 UA.
+      // 归属地取自 request.cf（边缘节点注入的国家/城市）；设备取自 UA 解析后的短标签，不展示原始 UA.
       const cf = c.req.raw as Request & {
         cf?: { country?: unknown; city?: unknown };
       };
@@ -140,6 +141,7 @@ const subApp = factory
           `节点用户「${owner.name}」拉取了订阅`,
           [
             `格式：${format}`,
+            `设备：${detectDeviceType(c.req.header("user-agent"))}`,
             `节点：${entries.length} 个`,
             `IP：${c.req.header("cf-connecting-ip") ?? "未知"}`,
             `归属地：${country} ${city}`,

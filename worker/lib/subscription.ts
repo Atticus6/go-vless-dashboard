@@ -94,7 +94,46 @@ export function detectSubFormat(
   return 'clash'
 }
 
-// ?port= / ?security= 覆盖（非法回退默认 443 / tls）.
+// 设备识别（订阅拉取通知用）：优先认代理客户端，认不出再看操作系统，都没有返回“未知”。
+// 只返回解析后的短标签，不回传原始 UA.
+export function detectDeviceType(
+  userAgent: string | null | undefined,
+): string {
+  const ua = (userAgent ?? '').toLowerCase()
+  if (!ua) return '未知'
+  const client: Array<[RegExp, string]> = [
+    [/clash.?verge|verge/, 'Clash Verge'],
+    [/clashx/, 'ClashX'],
+    [/clashforwindows/, 'Clash for Windows'],
+    [/clashforandroid/, 'Clash for Android'],
+    [/flclash/, 'FlClash'],
+    [/mihomo|meta/, 'Mihomo'],
+    [/stash/, 'Stash'],
+    [/surge/, 'Surge'],
+    [/shadowrocket/, 'Shadowrocket'],
+    [/quantumult/, 'Quantumult X'],
+    [/loon/, 'Loon'],
+    [/\bsfa\b/, 'sing-box (Android)'],
+    [/\bsfi\b/, 'sing-box (iOS)'],
+    [/\bsfm\b/, 'sing-box (macOS)'],
+    [/sing-box/, 'sing-box'],
+    [/v2rayng/, 'v2rayNG'],
+    [/nekobox/, 'NekoBox'],
+    [/nekoray/, 'NekoRay'],
+    [/hiddify/, 'Hiddify'],
+    [/streisand/, 'Streisand'],
+    [/v2box/, 'V2Box'],
+  ]
+  for (const [re, name] of client) {
+    if (re.test(ua)) return name
+  }
+  if (/iphone|ipad|ios/.test(ua)) return 'iOS'
+  if (/android/.test(ua)) return 'Android'
+  if (/windows/.test(ua)) return 'Windows'
+  if (/mac os|macos|darwin/.test(ua)) return 'macOS'
+  if (/linux/.test(ua)) return 'Linux'
+  return '未知'
+}
 export const subQuerySchema = z.object({
   port: z
     .string()
