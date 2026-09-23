@@ -4,6 +4,7 @@ import { node, nodeUser, nodeUserNode } from '!/db/app-schema'
 import { user } from '!/db/schema'
 import { createDb } from '!/db/index'
 import {
+  buildSubClashYamlUnified,
   buildSubEntries,
   DEFAULT_FRONT_PATTERNS,
   detectSubFormat,
@@ -118,6 +119,25 @@ const subApp = new Hono<{ Bindings: Env }>().get(
         () => undefined,
       ),
     )
+    // Clash：服务端先把 16 个 ruleset 拉下来内联进 rules，一次返回完整配置；
+    // 拉取失败自动回退 rule-providers 版（x-acl-mode 标明实际形态）.
+    if (format === 'clash') {
+      const { body, inline } = await buildSubClashYamlUnified(
+        entries,
+        token,
+        params.port,
+        params.security,
+      )
+      return new Response(body, {
+        status: 200,
+        headers: {
+          'content-type': 'text/yaml; charset=utf-8',
+          // 订阅内容随范围/节点变化，禁止边缘缓存.
+          'cache-control': 'no-store',
+          'x-acl-mode': inline ? 'inline' : 'providers',
+        },
+      })
+    }
     const { body, contentType } = formatSubBody(
       format,
       entries,
