@@ -16,9 +16,5 @@ export const Route = createFileRoute('/dashboard/settings/$path')({
 function SettingsPage() {
   const { path } = Route.useParams()
 
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <Settings path={path} />
-    </div>
-  )
+  return <Settings path={path} />
 }
