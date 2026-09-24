@@ -13,7 +13,7 @@ authApp.use(init)
 authApp.all('/*', (c) => c.var.auth.handler(c.req.raw))
 
 const app = new Hono<{ Bindings: Env }>()
-  // API 统一 base 路径：对外仍是 /api/auth、/api/health、/api/trpc。
+  // API 统一 base 路径：对外仍是 /api/auth、/api/trpc。
   .basePath('/api')
   .route('/auth', authApp)
   // 后端反向注册（公开，key 鉴权）：POST /api/nodes/register
@@ -22,21 +22,7 @@ const app = new Hono<{ Bindings: Env }>()
   .route('/traffic', trafficApp)
   // 用户订阅地址（公开，token 即凭证）：GET /api/sub/:token
   .route('/sub', subApp)
-  .get('/health', (c) => {
-    console.log(
-      JSON.stringify({
-        message: 'health check',
-        method: c.req.method,
-        path: c.req.path,
-      }),
-    )
-    return c.json({
-      ok: true,
-      service: 'go-vless-dashboard',
-      time: new Date().toISOString(),
-    })
-  })
-  // 管理后台数据一律走 tRPC（/api/nodes 已下线）。
+  // 管理后台数据一律走 tRPC（/api/nodes 已下线，/api/health 已并入 trpc.meta.health）。
   // endpoint 写完整对外路径，fetchRequestHandler 用它剥离前缀定位 procedure。
   .all('/trpc/*', (c) =>
     fetchRequestHandler({

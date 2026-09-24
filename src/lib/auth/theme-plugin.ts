@@ -8,7 +8,8 @@ import { Appearance } from "@/components/auth/theme/appearance"
 import { ThemeToggleItem } from "@/components/auth/theme/theme-toggle-item"
 
 /**
- * Hook shape compatible with `next-themes`' `useTheme` and similar APIs. The
+ * Hook shape compatible with `useTheme` from
+ * `@/components/theme-provider` (next-themes-compatible API). The
  * hook is invoked inside the plugin factory so consumers can register the
  * plugin in the same component as their `<ThemeProvider>` without an extra
  * inner component.
@@ -36,7 +37,8 @@ export type ThemePluginOptions = CommonThemeOptions &
   (
     | {
         /**
-         * A theme hook (e.g. next-themes' `useTheme`) called inside the
+         * A theme hook (e.g. `useTheme` from `@/components/theme-provider`)
+         * called inside the
          * plugin's slot components on every render. The hook owns the live
          * theme value, so `theme`/`setTheme` are not accepted in this form.
          */

@@ -17,6 +17,7 @@ import {
 import { useIsMutating } from "@tanstack/react-query"
 import { Eye, EyeOff } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Field,
@@ -34,6 +35,7 @@ import {
   InputGroupInput
 } from "@/components/ui/input-group"
 import { cn } from "@/lib/utils"
+import { trpc } from "@/lib/trpc"
 import {
   getAuthAdditionalFieldValidators,
   isAuthFormFieldInvalid,
@@ -90,6 +92,15 @@ export function SignUp({
   } = useAuth()
 
   const { fetchOptions, resetFetchOptions } = useFetchOptions()
+
+  const { t } = useTranslation()
+  // 缺省允许，避免加载中把表单闪没。
+  const { data: health, isPending: isStatusPending } =
+    trpc.meta.health.useQuery(undefined, {
+      staleTime: 60_000,
+      retry: 1,
+    })
+  const allowSignup = health?.allowSignup ?? true
 
   const { mutateAsync: signUpEmail } = useSignUpEmail(authClient, {
     onError: (error) => {
@@ -169,6 +180,35 @@ export function SignUp({
 
   const showSeparator =
     emailAndPassword?.enabled && socialProviders && socialProviders.length > 0
+
+  // 注册关闭时不渲染表单（服务端同样会拒绝，见 worker/auth.ts）。
+  // 状态加载中按默认（允许）处理，避免表单闪烁。
+  if (!isStatusPending && !allowSignup) {
+    return (
+      <Card className={cn("w-full max-w-sm", className)}>
+        <CardHeader>
+          <CardTitle className="text-xl font-semibold">
+            {t("auth.signupClosedTitle")}
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          <FieldDescription className="text-center">
+            {t("auth.signupClosedDesc")}{" "}
+            <Link
+              href={getAuthLinkURL(
+                `${basePaths.auth}/${viewPaths.auth.signIn}`,
+                redirectTo
+              )}
+              className="underline underline-offset-4"
+            >
+              {localization.auth.signIn}
+            </Link>
+          </FieldDescription>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className={cn("w-full max-w-sm", className)}>

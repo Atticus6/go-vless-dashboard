@@ -36,6 +36,7 @@ import {
   InputGroupInput
 } from "@/components/ui/input-group"
 import { useSignInContinuation } from "@/lib/auth/use-sign-in-continuation"
+import { trpc } from "@/lib/trpc"
 import { cn } from "@/lib/utils"
 import { isAuthFormFieldInvalid, useAuthForm } from "./auth-form"
 import { LastUsedBadge } from "./last-login-method/last-used-badge"
@@ -75,6 +76,12 @@ export function SignIn({
 
   const { fetchOptions, resetFetchOptions } = useFetchOptions()
   const continueSignIn = useSignInContinuation()
+  // 缺省允许，避免加载中把注册入口闪没。
+  const { data: health } = trpc.meta.health.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  })
+  const allowSignup = health?.allowSignup ?? true
 
   const { mutateAsync: signInEmail, isPending: signInEmailPending } =
     useSignInEmail(authClient, {
@@ -356,7 +363,7 @@ export function SignIn({
             </Link>
           )}
 
-          {emailAndPassword?.enabled && (
+          {emailAndPassword?.enabled && allowSignup && (
             <FieldDescription className="text-center">
               {localization.auth.needToCreateAnAccount}{" "}
               <Link

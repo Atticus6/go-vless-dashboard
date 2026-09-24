@@ -1,12 +1,19 @@
 import { useTranslation } from 'react-i18next'
+import { Check, ChevronDown, Languages } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const languages = ['zh', 'en'] as const
 type Language = (typeof languages)[number]
 
 const languageNames: Record<Language, string> = {
   zh: '中文',
-  en: 'EN',
+  en: 'English',
 }
 
 export function LanguageSwitcher() {
@@ -14,19 +21,30 @@ export function LanguageSwitcher() {
   const current: Language = i18n.resolvedLanguage === 'en' ? 'en' : 'zh'
 
   return (
-    <div className="flex items-center gap-1" role="group" aria-label={t('lang.label')}>
-      {languages.map((lng) => (
-        <Button
-          key={lng}
-          variant={current === lng ? 'secondary' : 'ghost'}
-          size="sm"
-          onClick={() => {
-            void i18n.changeLanguage(lng)
-          }}
-        >
-          {languageNames[lng]}
-        </Button>
-      ))}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={t('lang.label')}
+        render={
+          <Button variant="ghost" size="sm">
+            <Languages className="text-muted-foreground" />
+            {languageNames[current]}
+            <ChevronDown className="size-3 text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end" className="min-w-36">
+        {languages.map((lng) => (
+          <DropdownMenuItem
+            key={lng}
+            onClick={() => {
+              void i18n.changeLanguage(lng)
+            }}
+          >
+            <span className="flex-1">{languageNames[lng]}</span>
+            {current === lng && <Check className="text-muted-foreground" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

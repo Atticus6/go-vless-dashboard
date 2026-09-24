@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { trpc } from "@/lib/trpc"
 import { UserAvatar } from "./user-avatar"
 import { UserView } from "./user-view"
 
@@ -119,6 +120,12 @@ export function UserButton({
 
   const { isPending: settingActiveSession } = useSetActiveSession(authClient)
   const { data: session, isPending: sessionPending } = useSession(authClient)
+  // 缺省允许，避免加载中把注册入口闪没。
+  const { data: health } = trpc.meta.health.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  })
+  const allowSignup = health?.allowSignup ?? true
 
   const userLinks = links?.flatMap((link, index) => {
     if (!isValidElement(link)) {
@@ -246,17 +253,19 @@ export function UserButton({
               {localization.auth.signIn}
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: `${basePaths.auth}/${viewPaths.auth.signUp}`
-                })
-              }
-            >
-              <UserPlus2 className="text-muted-foreground" />
+            {allowSignup && (
+              <DropdownMenuItem
+                onClick={() =>
+                  navigate({
+                    to: `${basePaths.auth}/${viewPaths.auth.signUp}`
+                  })
+                }
+              >
+                <UserPlus2 className="text-muted-foreground" />
 
-              {localization.auth.signUp}
-            </DropdownMenuItem>
+                {localization.auth.signUp}
+              </DropdownMenuItem>
+            )}
 
             {plugins.flatMap((plugin) =>
               plugin.userMenuItems?.map((Item, index) => (

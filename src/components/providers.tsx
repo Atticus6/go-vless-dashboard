@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { useSession } from '@better-auth-ui/react'
-import { useTheme } from 'next-themes'
+import { useTheme } from '@/components/theme-provider'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
@@ -20,31 +20,6 @@ import { devalueTransformer, trpc } from '@/lib/trpc'
 import { httpBatchLink } from '@trpc/client'
 import { AuthProvider } from './auth/auth-provider'
 import { Toaster } from './ui/sonner'
-
-// 主题切换时的全站平滑过渡（首挂跳过）。
-// 首挂时同时移除 index.html 内联脚本的首屏底色，把背景交还给 CSS
-//（否则 <html> 自带背景会阻止 body 背景铺满视口）。
-function ThemeTransition() {
-  const { theme } = useTheme()
-  const mounted = useRef(false)
-
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true
-      document.documentElement.style.removeProperty('background-color')
-      return
-    }
-    const root = document.documentElement
-    root.classList.add('theme-anim')
-    const timer = window.setTimeout(
-      () => root.classList.remove('theme-anim'),
-      350,
-    )
-    return () => window.clearTimeout(timer)
-  }, [theme])
-
-  return null
-}
 
 // 切换账号 / 登录 / 退出后，应用层 tRPC 缓存还留着上个用户的数据
 //（setActive 只刷新 auth 自身的 query）。监听当前用户 id，变化就把
@@ -131,7 +106,6 @@ export function Providers({ children }: { children: ReactNode }) {
       ]}
       Link={({ href, ...props }) => <Link to={href} {...props} />}
     >
-      <ThemeTransition />
       <SessionUserSync />
       {children}
 

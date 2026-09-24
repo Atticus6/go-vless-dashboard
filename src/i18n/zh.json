@@ -9,6 +9,7 @@
   "theme": {
     "appearance": "外观",
     "theme": "主题",
+    "toggle": "切换主题",
     "system": "跟随系统",
     "light": "浅色",
     "dark": "深色"
@@ -25,24 +26,42 @@
     "deleteUserVerificationSent": "请查收邮件以确认注销账号。",
     "deleteUserSuccess": "你的账号已注销。"
   },
-  "badges": {
-    "baseUI": "Base UI",
-    "theme": "DESIGN.md 主题",
-    "apiOk": "Worker API 正常",
-    "apiError": "Worker API 异常"
-  },
   "home": {
-    "cardTitle": "Worker API 连通性",
-    "cardDesc": "首页 loader 请求同源 /api/health，由 Worker 内 Hono 响应。",
+    "navLogin": "登录",
+    "statusOk": "Worker API 正常",
+    "statusError": "Worker API 异常",
+    "statusChecking": "检测中…",
+    "headline": "多节点 go-vless，一处掌控",
+    "sub": "纳管多台 go-vless 服务：节点状态、订阅用户、流量分析一次配齐，通信密钥只保存在 Worker 侧。",
+    "goDashboard": "进入控制台",
+    "featuresKicker": "开箱即用",
+    "featuresTitle": "为节点运维准备好的一切",
+    "fNodesTitle": "节点管理",
+    "fNodesDesc": "多服务统一纳管，在线状态实时可见，拖拽排序、一键更新。",
+    "fUsersTitle": "订阅用户",
+    "fUsersDesc": "Token 即订阅 UUID，增删改自动推送到名下节点，离线节点下次注册补齐。",
+    "fTrafficTitle": "流量分析",
+    "fTrafficDesc": "按节点、按用户、按天汇总上下行用量，周期快照倒序可查。",
+    "fSecureTitle": "密钥隔离",
+    "fSecureDesc": "管理密钥只落在 Worker 侧，前端和订阅链接里见不到明文。",
+    "statusTitle": "服务状态",
+    "statusDesc": "tRPC 公开查询 trpc.meta.health，Worker 内实时响应。",
     "apiError": "Worker API 连接失败，请确认 dev server / 部署正常。",
     "recheck": "重新检测",
-    "goDashboard": "进入控制台"
+    "footer": "go-vless-dashboard · 跑在 Cloudflare Workers 上"
   },
   "about": {
     "title": "关于",
     "body": "这是一个示例二级路由，可删除或改成 dashboard 页面。"
   },
+  "auth": {
+    "signupClosedTitle": "注册已关闭",
+    "signupClosedDesc": "管理员已关闭公开注册，请直接登录。"
+  },
   "menu": {
+    "subtitle": "控制台",
+    "manage": "管理",
+    "system": "系统",
     "nodes": "节点",
     "nodeUsers": "节点用户",
     "traffic": "流量记录",

@@ -9,6 +9,7 @@
   "theme": {
     "appearance": "Appearance",
     "theme": "Theme",
+    "toggle": "Toggle theme",
     "system": "System",
     "light": "Light",
     "dark": "Dark"
@@ -25,24 +26,42 @@
     "deleteUserVerificationSent": "Check your email to confirm account deletion.",
     "deleteUserSuccess": "Your account has been deleted."
   },
-  "badges": {
-    "baseUI": "Base UI",
-    "theme": "DESIGN.md theme",
-    "apiOk": "Worker API OK",
-    "apiError": "Worker API error"
-  },
   "home": {
-    "cardTitle": "Worker API connectivity",
-    "cardDesc": "The home loader requests same-origin /api/health, served by Hono inside the Worker.",
+    "navLogin": "Sign in",
+    "statusOk": "Worker API OK",
+    "statusError": "Worker API error",
+    "statusChecking": "Checking…",
+    "headline": "All your go-vless nodes, in one place",
+    "sub": "Manage all your go-vless servers: node status, subscription users and traffic analytics in one dashboard. Management keys never leave the Worker.",
+    "goDashboard": "Open dashboard",
+    "featuresKicker": "Ready to go",
+    "featuresTitle": "Everything node ops needs",
+    "fNodesTitle": "Node management",
+    "fNodesDesc": "All servers in one list with live status, drag-to-reorder and one-click updates.",
+    "fUsersTitle": "Subscription users",
+    "fUsersDesc": "Token doubles as the subscription UUID; changes auto-push to online nodes and sync on next register.",
+    "fTrafficTitle": "Traffic analytics",
+    "fTrafficDesc": "Up/down totals by node, by user and by day, newest snapshots first.",
+    "fSecureTitle": "Key isolation",
+    "fSecureDesc": "Management keys live on the Worker side only — never in the frontend or links.",
+    "statusTitle": "Service status",
+    "statusDesc": "Public tRPC query trpc.meta.health, answered live inside the Worker.",
     "apiError": "Worker API connection failed. Make sure the dev server / deployment is running.",
     "recheck": "Retry",
-    "goDashboard": "Open dashboard"
+    "footer": "go-vless-dashboard · running on Cloudflare Workers"
   },
   "about": {
     "title": "About",
     "body": "This is a sample second-level route. Delete it or turn it into a dashboard page."
   },
+  "auth": {
+    "signupClosedTitle": "Sign-up is disabled",
+    "signupClosedDesc": "Public registration has been disabled. Please sign in instead."
+  },
   "menu": {
+    "subtitle": "Console",
+    "manage": "Manage",
+    "system": "System",
     "nodes": "Nodes",
     "nodeUsers": "Node users",
     "traffic": "Traffic",

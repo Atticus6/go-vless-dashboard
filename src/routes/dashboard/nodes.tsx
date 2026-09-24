@@ -350,9 +350,20 @@ function NodesPage() {
       )}
 
       {nodes.length > 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
+        /* DndContext 必须包在 <table> 外面：它内部会渲染无障碍播报用的
+           <div>，放在 <tbody> 里会导致 "div cannot be a child of tbody"
+           的 hydration 错误。SortableContext 不渲染 DOM，可留在里面。 */
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <Card>
+            <CardContent className="p-0">
+              <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-10">
@@ -377,48 +388,40 @@ function NodesPage() {
               </TableHeader>
               <TableBody>
                 {/* restrictToVerticalAxis：只允许上下拖，禁止左右跑. */}
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  modifiers={[restrictToVerticalAxis]}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onDragCancel={handleDragCancel}
+                <SortableContext
+                  items={nodes.map((n) => n.id)}
+                  strategy={verticalListSortingStrategy}
                 >
-                  <SortableContext
-                    items={nodes.map((n) => n.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {nodes.map((item) => (
-                      <NodeTableRow
-                        key={item.id}
-                        item={item}
-                        selected={validSelectedIds.includes(item.id)}
-                        onToggle={toggleSelect}
-                        onOpen={open}
-                      />
-                    ))}
-                  </SortableContext>
-                  {/* 拖拽浮层：跟随指针的轻量预览（仅图标 + 名称），
-                    原行保留占位，松手回落动画由浮层完成. */}
-                  <DragOverlay>
-                    {activeItem ? (
-                      <div className="flex items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg">
-                        <GripVertical className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate font-medium">
-                          {formatNodeName(
-                            activeItem.name,
-                            activeItem.countryCode,
-                          )}
-                        </span>
-                      </div>
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
+                  {nodes.map((item) => (
+                    <NodeTableRow
+                      key={item.id}
+                      item={item}
+                      selected={validSelectedIds.includes(item.id)}
+                      onToggle={toggleSelect}
+                      onOpen={open}
+                    />
+                  ))}
+                </SortableContext>
               </TableBody>
             </Table>
           </CardContent>
         </Card>
+          {/* 拖拽浮层：跟随指针的轻量预览（仅图标 + 名称），
+            原行保留占位，松手回落动画由浮层完成. */}
+          <DragOverlay>
+            {activeItem ? (
+              <div className="flex items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg">
+                <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium">
+                  {formatNodeName(
+                    activeItem.name,
+                    activeItem.countryCode,
+                  )}
+                </span>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       <NodeAddDialog

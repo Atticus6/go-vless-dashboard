@@ -202,3 +202,86 @@
     fill 0.25s ease,
     stroke 0.25s ease !important;
 }
+
+/* 主题切换的圆形揭开动画（View Transitions API）：从点击处向外扩散，
+   全像素快照过渡，阴影/toast/图表一起动画。坐标由 ThemeProvider 在
+   切换前写入 --theme-x/--theme-y。不支持的浏览器降级用上面的 .theme-anim */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2147483646;
+  animation: theme-wipe 0.45s cubic-bezier(0.33, 0, 0.67, 1);
+}
+@keyframes theme-wipe {
+  from {
+    clip-path: circle(0 at var(--theme-x, 50vw) var(--theme-y, 50vh));
+  }
+  to {
+    clip-path: circle(150vmax at var(--theme-x, 50vw) var(--theme-y, 50vh));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* 主页 Hero 入场：逐级上浮 */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hero-rise {
+  animation: hero-rise 0.7s cubic-bezier(0.22, 0.68, 0, 1.05) both;
+}
+.hero-rise-1 {
+  animation-delay: 0.06s;
+}
+.hero-rise-2 {
+  animation-delay: 0.12s;
+}
+.hero-rise-3 {
+  animation-delay: 0.18s;
+}
+.hero-rise-4 {
+  animation-delay: 0.24s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-rise {
+    animation: none;
+  }
+}
+
+/* 主页 Hero 背景网格：顶部 radial 渐隐 */
+.bg-grid-fade {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--foreground) 7%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--foreground) 7%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 44px 44px;
+  mask-image: radial-gradient(
+    ellipse 75% 65% at 50% 0%,
+    black 35%,
+    transparent 78%
+  );
+}

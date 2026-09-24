@@ -15,6 +15,10 @@ export function createAuth(env: Env, db: Database) {
     allowedHosts.push(env.DOMAIN);
   }
 
+  // 公开注册开关：环境变量 ALLOW_SIGNUP，缺省/非 "false" 均为允许。
+  // 注意 wrangler types 会把 vars 收窄成字面量类型，先转 string 再比。
+  const allowSignup = String(env.ALLOW_SIGNUP).toLowerCase() !== 'false'
+
   if(import.meta.env.DEV){
     allowedHosts.push("localhost:5173")
   }
@@ -39,6 +43,8 @@ export function createAuth(env: Env, db: Database) {
     },
     emailAndPassword: {
       enabled: true,
+      // 关掉后 /api/auth/sign-up/email 直接 403，前端同时隐藏注册入口。
+      disableSignUp: !allowSignup,
     },
     session: {
       // 会话有效期 7 天，活跃续期每天最多写库一次；
