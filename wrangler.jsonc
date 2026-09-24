@@ -25,6 +25,7 @@
   "placement":{
     "mode": "smart"
   },
+  "preview_urls": true,
   // 订阅接口限流：每个客户端 IP 每 60 秒最多 10 次（按 Cloudflare 边缘位置分别计数）。
   // namespace_id 在同一账号内全局唯一，换新绑定务必换号，避免与其它限流器共用计数。
   "ratelimits": [
