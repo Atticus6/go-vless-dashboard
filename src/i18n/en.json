@@ -108,6 +108,7 @@
     "configKeyKeep": "Leave empty to keep unchanged",
     "actions": "Actions",
     "status": "Reachable",
+    "reportedAt": "Reported",
     "sort": "Drag to reorder",
     "selectAll": "Select all",
     "selectedCount": "{{count}} selected",

@@ -32,6 +32,8 @@ import {
   Upload,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { formatDistanceToNow } from 'date-fns'
+import { enUS, zhCN } from 'date-fns/locale'
 import { formatNodeName } from '@/lib/country'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -381,6 +383,7 @@ function NodesPage() {
                   </TableHead>
                   <TableHead>{t('nodes.name')}</TableHead>
                   <TableHead className="w-44">{t('nodes.status')}</TableHead>
+                  <TableHead className="w-44">{t('nodes.reportedAt')}</TableHead>
                   <TableHead className="w-32 text-right">
                     {t('nodes.actions')}
                   </TableHead>
@@ -572,6 +575,31 @@ function UpdateAllDialog({
   )
 }
 
+// 相对时间（"3 分钟前"）：30 秒 tick 一次保持新鲜，
+// 重渲染只局限在这个小组件，不会带动整页。
+function LastSeenText({ value }: { value: string | null }) {
+  const { i18n } = useTranslation()
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  if (!value) return <>—</>
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return <>—</>
+  void now // 订阅上面的 tick，到点重渲染刷新相对时间
+  return (
+    <>
+      {formatDistanceToNow(date, {
+        addSuffix: true,
+        locale: i18n.language.startsWith('en') ? enUS : zhCN,
+      })}
+    </>
+  )
+}
+
 // 可排序的节点行：列表内位移动画只做让位，被拖行半透明留占位，
 // 真正跟随指针的是 DragOverlay 浮层；拖拽手柄独占 listeners，行内按钮不受影响.
 function NodeTableRow({
@@ -650,6 +678,15 @@ function NodeTableRow({
             {item.baseUrl ? '-' : t('nodes.notConfigured')}
           </Badge>
         )}
+      </TableCell>
+      {/* 最后在线：相对时间，hover 看绝对时间；从未上线过显示破折号. */}
+      <TableCell
+        className="text-xs whitespace-nowrap text-muted-foreground"
+        title={
+          item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleString() : undefined
+        }
+      >
+        <LastSeenText value={item.lastSeenAt} />
       </TableCell>
       <TableCell className="text-right">
         <DropdownMenu>

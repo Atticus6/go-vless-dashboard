@@ -108,6 +108,7 @@
     "configKeyKeep": "留空表示不修改",
     "actions": "操作",
     "status": "连通",
+    "reportedAt": "上报时间",
     "sort": "拖动排序",
     "selectAll": "全选",
     "selectedCount": "已选 {{count}} 个",
