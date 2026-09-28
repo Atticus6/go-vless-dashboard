@@ -153,6 +153,10 @@ export function buildSubClashYaml(
     'rule-providers:',
     ...buildAclRuleProviders(),
     'rules:',
+    // 自定义直连覆盖（必须放在 Ban* 之前，Clash 按首条命中执行）：
+    // PostHog 在 BanEasyList/BanEasyPrivacy 里被当广告拦截，
+    // 这里强制 🎯 全球直连，截图中的 i.posthog.com / internal-e/t.posthog.com 即此情况.
+    ...CUSTOM_DIRECT_RULES,
     // ruleset 顺序与 INI 完全一致（规则行内分组名不加引号，与 ACL4SSR 直出一致）
     '  - RULE-SET,LocalAreaNetwork,🎯 全球直连',
     '  - RULE-SET,UnBan,🎯 全球直连',
@@ -235,6 +239,18 @@ const ACL_BASE = 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash
 /** ACL4SSR 未收录、需手动补的 AI 域名（rule-providers 版与内联版共用，保持一致） */
 const CUSTOM_AI_RULES: readonly string[] = [
   '  - DOMAIN-SUFFIX,opencode.ai,🤖 AI',
+]
+
+/** 强制全球直连的自定义覆盖（rule-providers 版与内联版共用，保持一致）：
+ * 必须放在 Ban* 系列之前（Clash 首条命中即定分组）.
+ * - posthog.com：被 BanEasyList/BanEasyPrivacy 当广告 REJECT，
+ *   覆盖 i.posthog.com / internal-e.posthog.com / internal-t.posthog.com
+ *   及 us/eu.i.posthog.com 等全系域名；
+ * - startimes.me：自有业务域名，同样强制直连.
+ */
+const CUSTOM_DIRECT_RULES: readonly string[] = [
+  '  - DOMAIN-SUFFIX,posthog.com,🎯 全球直连',
+  '  - DOMAIN-SUFFIX,startimes.me,🎯 全球直连',
 ]
 
 // Clash/Mihomo 通用规则类型白名单：不在此表的（如 URL-REGEX）
@@ -378,14 +394,15 @@ export async function buildSubClashYamlUnified(
   const fulfilled = (settled as PromiseFulfilledResult<string[]>[]).map(
     (r) => r.value,
   )
+  // 自定义直连覆盖放最前（首条命中即定分组，覆盖 BanEasyList/BanEasyPrivacy 里的 posthog）；
   // 自定义 AI 规则插在 AI/OpenAi 源之后、其余规则之前（顺序与 rule-providers 版一致）
   const openAiIndex = ACL_RULE_SOURCES.findIndex((s) => s.name === 'OpenAi')
   const expanded = [
+    ...CUSTOM_DIRECT_RULES,
     ...fulfilled.slice(0, openAiIndex + 1).flat(),
     ...CUSTOM_AI_RULES,
     ...fulfilled.slice(openAiIndex + 1).flat(),
   ]
-  expanded.push('  - DOMAIN-SUFFIX,startimes.me,🎯 全球直连')
   expanded.push('  - GEOIP,CN,🎯 全球直连', '  - MATCH,🐟 漏网之鱼')
   return {
     body: buildSubClashYamlInline(entries, token, port, security, expanded),
